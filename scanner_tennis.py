@@ -2,7 +2,7 @@ import requests, csv, os, config
 from datetime import datetime
 import dateutil.parser
 
-# --- CONFIGURAZIONE TELEGRAM ---
+# --- I TUOI DATI TELEGRAM ---
 TELEGRAM_TOKEN = "8145327630:AAHJC6vDjvGUyPT0pKw63fyW53hTl_F873U"
 TELEGRAM_CHAT_ID = "5562163433"
 
@@ -63,7 +63,6 @@ def scan_tennis():
             url = f'https://api.the-odds-api.com/v4/sports/{torneo["key"]}/odds'
             resp = requests.get(url, params={'apiKey': config.API_KEY, 'regions': config.REGIONS, 'markets': 'h2h', 'oddsFormat': 'decimal'})
             if resp.status_code != 200: continue
-            
             for event in resp.json():
                 home, away = event['home_team'], event['away_team']
                 pinna = {}
@@ -90,11 +89,10 @@ def scan_tennis():
                                 label_status = f"🟢 {res['status']}" if res['status']=="VALUE" else f"🟡 {res['status']}"
                                 stake_str = f"TARGET: {res['q_req']}" if res['status']=="ATTESA" else "PUNTA SUBITO"
                                 
-                                # SCRITTURA
                                 with open(config.FILE_PENDING, 'a', newline='', encoding='utf-8') as f:
                                     csv.writer(f).writerow(['TENNIS', datetime.now().strftime("%Y-%m-%d %H:%M"), converti_orario(event.get('commence_time', 'N/A')), torneo['title'], f"{home} vs {away}", sel_name, b['title'], res['q_att'], f"{label_status} {res['val']}%", stake_str, '', ''])
                                 
-                                # --- NOTIFICA TELEGRAM ---
+                                # NOTIFICA
                                 emoji = "🟢" if res['status'] == "VALUE" else "🟡"
                                 msg = f"{emoji} TENNIS ALERT!\n🎾 {home} vs {away}\n👉 {sel_name}\n📊 Quota: {res['q_att']}\n📈 Valore: {res['val']}%\n💰 Azione: {stake_str}"
                                 send_telegram(msg)
