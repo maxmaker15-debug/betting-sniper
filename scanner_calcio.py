@@ -1,7 +1,15 @@
-
 import requests, csv, os, config
 from datetime import datetime
 import dateutil.parser
+
+# --- CONFIGURAZIONE TELEGRAM ---
+TELEGRAM_TOKEN = "8145327630:AAHJC6vDjvGUyPT0pKw63fyW53hTl_F873U"
+TELEGRAM_CHAT_ID = "5562163433"
+
+def send_telegram(msg):
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    try: requests.get(url, params={"chat_id": TELEGRAM_CHAT_ID, "text": msg})
+    except: pass
 
 def converti_orario(iso_date):
     try: return dateutil.parser.parse(iso_date).strftime("%Y-%m-%d %H:%M")
@@ -42,6 +50,7 @@ def analizza_calcio_sniper(pinnacle_odds, soft_odds):
     return migliore_opzione
 
 def scan_calcio():
+    # Pulizia file
     if os.path.exists(config.FILE_PENDING): os.remove(config.FILE_PENDING)
     if not os.path.exists(config.FILE_PENDING):
          with open(config.FILE_PENDING, 'w', newline='', encoding='utf-8') as f:
@@ -49,10 +58,15 @@ def scan_calcio():
 
     leagues = ['soccer_italy_serie_a', 'soccer_england_premier_league', 'soccer_spain_la_liga', 'soccer_uefa_champions_league', 'soccer_france_ligue_one', 'soccer_germany_bundesliga']
     
+    # Invia notifica di inizio scansione (Opzionale, puoi toglierla se dà fastidio)
+    # send_telegram("⚽ Inizio scansione Calcio...")
+
+    found_any = False
     for league in leagues:
         try:
             resp = requests.get(f'https://api.the-odds-api.com/v4/sports/{league}/odds', params={'apiKey': config.API_KEY, 'regions': config.REGIONS, 'markets': 'h2h', 'oddsFormat': 'decimal'})
             if resp.status_code != 200: continue
+            
             for event in resp.json():
                 home, away = event['home_team'], event['away_team']
                 pinna = {}
@@ -79,6 +93,17 @@ def scan_calcio():
                                 sel_name = home if res['sel']=='Home' else (away if res['sel']=='Away' else 'Pareggio')
                                 label_status = f"🟢 {res['status']}" if res['status']=="VALUE" else f"🟡 {res['status']}"
                                 stake_str = f"TARGET: {res['q_req']}" if res['status']=="ATTESA" else "PUNTA SUBITO"
+                                
+                                # SCRITTURA SU FILE
                                 with open(config.FILE_PENDING, 'a', newline='', encoding='utf-8') as f:
                                     csv.writer(f).writerow(['CALCIO', datetime.now().strftime("%Y-%m-%d %H:%M"), converti_orario(event['commence_time']), league, f"{home} vs {away}", sel_name, b['title'], res['q_att'], f"{label_status} {res['val']}%", stake_str, '', ''])
+                                
+                                # --- NOTIFICA TELEGRAM ---
+                                emoji = "🟢" if res['status'] == "VALUE" else "🟡"
+                                msg = f"{emoji} {res['status']} FOUND!\n⚽ {home} vs {away}\n👉 {sel_name}\n📊 Quota: {res['q_att']}\n📈 Valore: {res['val']}%\n💰 Azione: {stake_str}"
+                                send_telegram(msg)
+                                found_any = True
         except: pass
+    
+    if not found_any:
+        pass # Se vuoi che ti avvisi anche quando non trova nulla, scrivi qui send_telegram("Nessuna occasione trovata.")
