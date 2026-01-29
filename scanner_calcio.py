@@ -2,7 +2,7 @@ import requests, csv, os, config
 from datetime import datetime
 import dateutil.parser
 
-# --- I TUOI DATI TELEGRAM ---
+# --- DATI TELEGRAM ---
 TELEGRAM_TOKEN = "8145327630:AAHJC6vDjvGUyPT0pKw63fyW53hTl_F873U"
 TELEGRAM_CHAT_ID = "5562163433"
 
@@ -20,6 +20,16 @@ def calcola_quota_target(prob_reale, roi=0.02):
     target_netto = fair_odds * (1 + roi)
     target_lordo = 1 + ((target_netto - 1) / (1 - config.COMMISSIONE_BETFAIR))
     return round(target_lordo, 2)
+
+def calcola_stake(valore_perc, quota_netta):
+    try:
+        if quota_netta <= 1: return 0
+        kelly_perc = (valore_perc / 100) / (quota_netta - 1)
+        stake_calcolato = config.BANKROLL_TOTALE * config.KELLY_FRACTION * kelly_perc
+        if stake_calcolato > config.STAKE_MASSIMO: stake_calcolato = config.STAKE_MASSIMO
+        if stake_calcolato < 0: stake_calcolato = 0
+        return int(stake_calcolato)
+    except: return 0
 
 def analizza_calcio_sniper(pinnacle_odds, soft_odds):
     if len(pinnacle_odds) != 3: return None
@@ -55,7 +65,17 @@ def scan_calcio():
          with open(config.FILE_PENDING, 'w', newline='', encoding='utf-8') as f:
             csv.writer(f).writerow(['Sport', 'Data_Scan', 'Orario_Match', 'Torneo', 'Match', 'Selezione', 'Bookmaker', 'Quota_Netta', 'Valore_%', 'Stake_Euro', 'Esito', 'Profitto_Euro'])
 
-    leagues = ['soccer_italy_serie_a', 'soccer_england_premier_league', 'soccer_spain_la_liga', 'soccer_uefa_champions_league', 'soccer_france_ligue_one', 'soccer_germany_bundesliga']
+    # LISTA CAMPIONATI AGGIORNATA (CON COPPE EUROPEE)
+    leagues = [
+        'soccer_italy_serie_a', 
+        'soccer_england_premier_league', 
+        'soccer_spain_la_liga', 
+        'soccer_france_ligue_one', 
+        'soccer_germany_bundesliga',
+        'soccer_uefa_champions_league',       # Champions
+        'soccer_uefa_europa_league',          # Europa League
+        'soccer_uefa_europa_conference_league' # Conference
+    ]
     
     found_any = False
     for league in leagues:
@@ -87,14 +107,22 @@ def scan_calcio():
                             if res:
                                 sel_name = home if res['sel']=='Home' else (away if res['sel']=='Away' else 'Pareggio')
                                 label_status = f"🟢 {res['status']}" if res['status']=="VALUE" else f"🟡 {res['status']}"
-                                stake_str = f"TARGET: {res['q_req']}" if res['status']=="ATTESA" else "PUNTA SUBITO"
                                 
+                                stake_info = ""
+                                if res['status'] == "VALUE":
+                                    euro = calcola_stake(res['val'], res['q_att'])
+                                    stake_info = f"{euro}€"
+                                else:
+                                    stake_info = f"TARGET: {res['q_req']}"
+
                                 with open(config.FILE_PENDING, 'a', newline='', encoding='utf-8') as f:
-                                    csv.writer(f).writerow(['CALCIO', datetime.now().strftime("%Y-%m-%d %H:%M"), converti_orario(event['commence_time']), league, f"{home} vs {away}", sel_name, b['title'], res['q_att'], f"{label_status} {res['val']}%", stake_str, '', ''])
+                                    csv.writer(f).writerow(['CALCIO', datetime.now().strftime("%Y-%m-%d %H:%M"), converti_orario(event['commence_time']), league, f"{home} vs {away}", sel_name, b['title'], res['q_att'], f"{label_status} {res['val']}%", stake_info, '', ''])
                                 
-                                # NOTIFICA
                                 emoji = "🟢" if res['status'] == "VALUE" else "🟡"
-                                msg = f"{emoji} CALCIO ALERT!\n⚽ {home} vs {away}\n👉 {sel_name}\n📊 Quota: {res['q_att']}\n📈 Valore: {res['val']}%\n💰 Azione: {stake_str}"
+                                msg = f"{emoji} CALCIO: {sel_name}\n🆚 {home} vs {away}\n🏆 {league}\n📊 Quota: {res['q_att']} (Valore: {res['val']}%)\n💰 STAKE: {stake_info}"
                                 send_telegram(msg)
                                 found_any = True
         except: pass
+
+if __name__ == "__main__":
+    scan_calcio()
