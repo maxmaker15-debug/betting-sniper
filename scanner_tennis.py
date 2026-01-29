@@ -2,7 +2,7 @@ import requests, csv, os, config
 from datetime import datetime
 import dateutil.parser
 
-# --- I TUOI DATI TELEGRAM ---
+# --- DATI TELEGRAM ---
 TELEGRAM_TOKEN = "8145327630:AAHJC6vDjvGUyPT0pKw63fyW53hTl_F873U"
 TELEGRAM_CHAT_ID = "5562163433"
 
@@ -20,6 +20,16 @@ def calcola_quota_target(prob_reale, roi=0.02):
     target_netto = fair_odds * (1 + roi)
     target_lordo = 1 + ((target_netto - 1) / (1 - config.COMMISSIONE_BETFAIR))
     return round(target_lordo, 2)
+
+def calcola_stake(valore_perc, quota_netta):
+    try:
+        if quota_netta <= 1: return 0
+        kelly_perc = (valore_perc / 100) / (quota_netta - 1)
+        stake_calcolato = config.BANKROLL_TOTALE * config.KELLY_FRACTION * kelly_perc
+        if stake_calcolato > config.STAKE_MASSIMO: stake_calcolato = config.STAKE_MASSIMO
+        if stake_calcolato < 0: stake_calcolato = 0
+        return int(stake_calcolato)
+    except: return 0
 
 def analizza_tennis_sniper(pinnacle_odds, soft_odds):
     try:
@@ -63,6 +73,7 @@ def scan_tennis():
             url = f'https://api.the-odds-api.com/v4/sports/{torneo["key"]}/odds'
             resp = requests.get(url, params={'apiKey': config.API_KEY, 'regions': config.REGIONS, 'markets': 'h2h', 'oddsFormat': 'decimal'})
             if resp.status_code != 200: continue
+            
             for event in resp.json():
                 home, away = event['home_team'], event['away_team']
                 pinna = {}
@@ -87,13 +98,21 @@ def scan_tennis():
                             if res:
                                 sel_name = home if res['sel']=='Home' else away
                                 label_status = f"🟢 {res['status']}" if res['status']=="VALUE" else f"🟡 {res['status']}"
-                                stake_str = f"TARGET: {res['q_req']}" if res['status']=="ATTESA" else "PUNTA SUBITO"
+                                
+                                stake_info = ""
+                                if res['status'] == "VALUE":
+                                    euro = calcola_stake(res['val'], res['q_att'])
+                                    stake_info = f"{euro}€"
+                                else:
+                                    stake_info = f"TARGET: {res['q_req']}"
                                 
                                 with open(config.FILE_PENDING, 'a', newline='', encoding='utf-8') as f:
-                                    csv.writer(f).writerow(['TENNIS', datetime.now().strftime("%Y-%m-%d %H:%M"), converti_orario(event.get('commence_time', 'N/A')), torneo['title'], f"{home} vs {away}", sel_name, b['title'], res['q_att'], f"{label_status} {res['val']}%", stake_str, '', ''])
+                                    csv.writer(f).writerow(['TENNIS', datetime.now().strftime("%Y-%m-%d %H:%M"), converti_orario(event.get('commence_time', 'N/A')), torneo['title'], f"{home} vs {away}", sel_name, b['title'], res['q_att'], f"{label_status} {res['val']}%", stake_info, '', ''])
                                 
-                                # NOTIFICA
                                 emoji = "🟢" if res['status'] == "VALUE" else "🟡"
-                                msg = f"{emoji} TENNIS ALERT!\n🎾 {home} vs {away}\n👉 {sel_name}\n📊 Quota: {res['q_att']}\n📈 Valore: {res['val']}%\n💰 Azione: {stake_str}"
+                                msg = f"{emoji} TENNIS: {sel_name}\n🎾 {home} vs {away}\n📊 Quota: {res['q_att']} (Valore: {res['val']}%)\n💰 STAKE: {stake_info}"
                                 send_telegram(msg)
     except: pass
+
+if __name__ == "__main__":
+    scan_tennis()
