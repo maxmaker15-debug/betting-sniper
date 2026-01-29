@@ -4,3 +4,4 @@ pandas
 requests
 plotly
 python-dateutil
+plotly
