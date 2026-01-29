@@ -137,4 +137,68 @@ if page == "📊 Dashboard":
             closed_df['Cum'] = closed_df['Profitto_Reale'].cumsum()
             fig = px.area(closed_df, x='N', y='Cum', markers=True)
             fig.update_traces(line_color='#0ea5e9', fillcolor='rgba(14, 165, 233, 0.2)')
-            fig.update_layout(paper_bgcolor='
+            fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color='#cbd5e1', xaxis_title="Trade", yaxis_title="€", showlegend=False, margin=dict(l=20,r=20,t=20,b=20))
+            st.plotly_chart(fig, use_container_width=True)
+        else: st.info("Nessun dato storico.")
+        
+    with g2:
+        st.subheader("🎯 Mix Sport")
+        if not df.empty and 'Sport' in df.columns:
+            sc = df['Sport'].value_counts()
+            fig2 = px.pie(values=sc.values, names=sc.index, hole=0.6, color_discrete_sequence=['#0ea5e9', '#10b981'])
+            fig2.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color='#cbd5e1', showlegend=True, margin=dict(t=20,b=20,l=20,r=20), legend=dict(orientation="h", y=-0.2))
+            st.plotly_chart(fig2, use_container_width=True)
+
+# --- RADAR ---
+elif page == "📡 Radar Mercati":
+    st.title("Radar Operativo")
+    c1, c2 = st.columns(2)
+    with c1:
+        if st.button("🎾 SCANSIONA TENNIS"):
+            with st.spinner("..."): scanner_tennis.scan_tennis()
+            st.success("OK"); st.rerun()
+    with c2:
+        if st.button("⚽ SCANSIONA CALCIO"):
+            with st.spinner("..."): scanner_calcio.scan_calcio()
+            st.success("OK"); st.rerun()
+            
+    st.markdown("---")
+    df = load_data(config.FILE_PENDING)
+    if not df.empty:
+        df_view = df[df['Stato_Trade'] == 'APERTO'] if 'Stato_Trade' in df.columns else df
+        if not df_view.empty:
+            st.subheader(f"⚡ Opportunità: {len(df_view)}")
+            cols = ['Orario_Match', 'Match', 'Selezione', 'Quota_Ingresso', 'Pinnacle_Iniziale', 'Target_Scalping', 'Stake_Euro', 'Valore_%']
+            final = [c for c in cols if c in df_view.columns]
+            st.dataframe(df_view[final], use_container_width=True, hide_index=True, height=400,
+                column_config={
+                    "Quota_Ingresso": st.column_config.NumberColumn("Ingr.", format="%.2f"),
+                    "Target_Scalping": st.column_config.NumberColumn("🎯 Exit", format="%.2f"),
+                    "Pinnacle_Iniziale": st.column_config.NumberColumn("📉 Pinna", format="%.2f"),
+                    "Valore_%": st.column_config.ProgressColumn("Value", min_value=0, max_value=20, format="%f%%")
+                })
+        else: st.success("Nessun trade pendente.")
+    else: st.info("Radar vuoto.")
+
+# --- DIARIO ---
+elif page == "📝 Diario Ordini":
+    st.title("Diario")
+    df = load_data(config.FILE_PENDING)
+    if not df.empty:
+        edited = st.data_editor(df, num_rows="dynamic", use_container_width=True,
+            column_config={
+                "Stato_Trade": st.column_config.SelectboxColumn("Stato", options=["APERTO", "CHIUSO (Scalping)", "CHIUSO (Stop Loss)", "CHIUSO (Value Bet Vinta)", "CHIUSO (Value Bet Persa)"], required=True, width="medium"),
+                "Profitto_Reale": st.column_config.NumberColumn("P/L (€)", format="%.2f €")
+            })
+        if st.button("💾 SALVA"):
+            edited.to_csv(config.FILE_PENDING, index=False)
+            st.success("Salvato!"); st.rerun()
+    else: st.warning("Vuoto.")
+
+# --- SISTEMA ---
+elif page == "⚙️ Sistema":
+    st.title("Sistema")
+    if st.button("🗑️ RESET DATABASE"):
+        if os.path.exists(config.FILE_PENDING): os.remove(config.FILE_PENDING)
+        st.warning("Resettato."); st.rerun()
+    st.info(f"Bankroll: {config.BANKROLL_TOTALE}€ | Stake Max: {config.STAKE_MASSIMO}€")
