@@ -9,75 +9,118 @@ import config
 import scanner_calcio
 import scanner_tennis
 
-# --- CONFIGURAZIONE PAGINA & TEMA ---
-st.set_page_config(page_title="Sniper Finance Terminal", page_icon="🦅", layout="wide")
+# --- CONFIGURAZIONE PAGINA (LAYOUT WIDE & TITLE) ---
+st.set_page_config(page_title="Sniper Terminal", page_icon="🦅", layout="wide")
 
-# --- CSS "FILA FINANCE" STYLE (Advanced) ---
+# --- CSS AVANZATO (STILE "CYBER-BLOOMBERG") ---
 st.markdown("""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
-    html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=JetBrains+Mono:wght@400;700&display=swap');
     
-    /* SFONDO */
+    /* 1. RESET GENERALE E FONT */
+    html, body, [class*="css"] {
+        font-family: 'Inter', sans-serif;
+        font-size: 14px; /* Testo più piccolo e professionale */
+    }
+    h1, h2, h3 {
+        font-family: 'Inter', sans-serif;
+        letter-spacing: -0.5px;
+    }
+    
+    /* 2. RIDUZIONE SPAZI VUOTI (COMPATTARE) */
+    .block-container {
+        padding-top: 1.5rem !important;
+        padding-bottom: 1rem !important;
+        padding-left: 2rem !important;
+        padding-right: 2rem !important;
+    }
+    
+    /* 3. SFONDO E TEMA */
     .stApp {
-        background-color: #0b1120;
-        background-image: radial-gradient(at 50% 0%, #172a46 0px, transparent 50%);
+        background-color: #0f1116; /* Nero profondo leggermente blu */
+        background-image: 
+            linear-gradient(rgba(15, 17, 22, 0.9), rgba(15, 17, 22, 0.9)),
+            url("https://www.transparenttextures.com/patterns/carbon-fibre.png");
     }
     
-    /* SIDEBAR */
+    /* 4. SIDEBAR PIÙ ELEGANTE */
     section[data-testid="stSidebar"] {
-        background-color: #0f172a;
-        border-right: 1px solid #1e293b;
+        background-color: #090a0d;
+        border-right: 1px solid #1f2937;
     }
     
-    /* CARDS & TABLES */
-    div[data-testid="stMetric"], div[data-testid="stDataFrame"] {
-        background-color: #1e293b;
-        padding: 20px;
-        border-radius: 16px;
-        border: 1px solid #334155;
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+    /* 5. METRICHE (KPI CARDS) CUSTOM */
+    /* Nascondiamo quelle default brutte e usiamo HTML custom nel codice Python, 
+       ma se usiamo st.metric le stilizziamo qui */
+    div[data-testid="stMetric"] {
+        background-color: #161b22;
+        border: 1px solid #2d3748;
+        padding: 10px 15px; /* Molto meno padding */
+        border-radius: 8px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.2);
     }
-    
-    /* TESTI */
     div[data-testid="stMetricLabel"] {
-        color: #94a3b8;
-        font-size: 0.8rem;
-        font-weight: 600;
+        font-size: 11px !important;
+        color: #9ca3af !important;
         text-transform: uppercase;
-        letter-spacing: 1.5px;
+        margin-bottom: 2px !important;
     }
     div[data-testid="stMetricValue"] {
-        color: #f8fafc;
-        font-weight: 800;
-        font-size: 1.8rem;
+        font-size: 20px !important; /* Numeri più piccoli rispetto a prima */
+        font-family: 'JetBrains Mono', monospace; /* Font stile codice per i numeri */
+        color: #e5e7eb !important;
     }
     
-    /* BOTTONI */
+    /* 6. TABELLE (DATAFRAME) PIÙ PULITE */
+    div[data-testid="stDataFrame"] {
+        border: 1px solid #2d3748;
+        border-radius: 8px;
+        overflow: hidden;
+    }
+    
+    /* 7. BOTTONI MODERNI (Glow Effect) */
     .stButton>button {
-        width: 100%;
-        height: 50px;
-        border-radius: 12px;
-        font-weight: 700;
-        background: linear-gradient(135deg, #0ea5e9 0%, #10b981 100%);
+        background: linear-gradient(to right, #2563eb, #06b6d4);
         color: white;
         border: none;
-        transition: all 0.3s ease;
+        border-radius: 6px;
+        height: 38px; /* Più bassi */
+        font-size: 13px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        transition: all 0.2s;
     }
-    .stButton>button:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(16, 185, 129, 0.6); }
+    .stButton>button:hover {
+        opacity: 0.9;
+        box-shadow: 0 0 15px rgba(6, 182, 212, 0.4);
+        transform: scale(1.01);
+    }
     
-    /* TITOLI */
-    h1 {
-        background: linear-gradient(90deg, #38bdf8, #818cf8);
+    /* 8. ALERT E BOX VARI */
+    .stAlert {
+        padding: 0.5rem 1rem;
+        border-radius: 6px;
+    }
+    
+    /* TITOLI HEADER */
+    .header-title {
+        font-size: 24px;
+        font-weight: 800;
+        background: -webkit-linear-gradient(0deg, #38bdf8, #818cf8);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
-        font-weight: 800;
     }
-    h2, h3 { color: #e2e8f0; }
+    .header-subtitle {
+        font-size: 12px;
+        color: #6b7280;
+        margin-top: -5px;
+        font-family: 'JetBrains Mono', monospace;
+    }
 </style>
 """, unsafe_allow_html=True)
 
-# --- FUNZIONI ---
+# --- FUNZIONI CARICAMENTO DATI ---
 def load_data(f): 
     if os.path.isfile(f):
         try: return pd.read_csv(f)
@@ -85,235 +128,226 @@ def load_data(f):
     return pd.DataFrame()
 
 def test_telegram_connection():
-    TOKEN = "8145327630:AAHJC6vDjvGUyPT0pKw63fyW53hTl_F873U"
-    CHAT_ID = "5562163433"
+    TOKEN = config.TELEGRAM_TOKEN if hasattr(config, 'TELEGRAM_TOKEN') else "8145327630:AAHJC6vDjvGUyPT0pKw63fyW53hTl_F873U"
+    CHAT_ID = config.TELEGRAM_CHAT_ID if hasattr(config, 'TELEGRAM_CHAT_ID') else "5562163433"
     try:
-        requests.get(f"https://api.telegram.org/bot{TOKEN}/sendMessage", params={"chat_id": CHAT_ID, "text": "🦅 PING: Sistema Operativo."})
+        requests.get(f"https://api.telegram.org/bot{TOKEN}/sendMessage", params={"chat_id": CHAT_ID, "text": "🦅 PING: Terminale Operativo."})
         return True
     except: return False
 
-# --- SIDEBAR ---
+# --- SIDEBAR (NAVIGAZIONE) ---
 with st.sidebar:
-    st.image("https://cdn-icons-png.flaticon.com/512/7269/7269877.png", width=60)
-    st.title("SNIPER PRO")
-    st.markdown("<div style='font-size: 12px; color: #64748b; margin-top: -15px;'>V. 4.0 - FINANCIAL INTELLIGENCE</div>", unsafe_allow_html=True)
+    st.markdown("### 🦅 SNIPER PRO")
+    st.caption("v. 5.0 | Build: Stable")
     st.markdown("---")
-    page = st.radio("MENU", ["📊 Dashboard", "📡 Radar Mercati", "📝 Diario Ordini", "⚙️ Sistema"])
+    
+    # Menu con icone più pulite
+    page = st.radio(
+        "MENU OPERATIVO", 
+        ["Dashboard", "Radar", "Diario", "Settings"],
+        format_func=lambda x: f" {x.upper()}" # Rende tutto maiuscolo e pulito
+    )
+    
     st.markdown("---")
-    if st.button("🔔 PING TELEGRAM"):
-        if test_telegram_connection(): st.success("OK")
-        else: st.error("KO")
+    
+    # Sezione Stato rapido
+    st.markdown("<div style='font-size: 11px; color: #4b5563; margin-bottom: 5px;'>SYSTEM STATUS</div>", unsafe_allow_html=True)
+    c_ping, c_ind = st.columns([3, 1])
+    with c_ping:
+        if st.button("PING TELEGRAM", type="secondary"):
+            if test_telegram_connection(): st.toast("Connesso", icon="✅")
+            else: st.toast("Errore", icon="❌")
+    with c_ind:
+        st.markdown("🟢") # Indicatore finto "Online"
 
-# --- DASHBOARD ---
-if page == "📊 Dashboard":
-    st.title("Panoramica Finanziaria")
+# --- PAGINA 1: DASHBOARD ---
+if page == "Dashboard":
+    # Header Compatto
+    c_head1, c_head2 = st.columns([3, 1])
+    with c_head1:
+        st.markdown('<div class="header-title">WAR ROOM</div>', unsafe_allow_html=True)
+        st.markdown('<div class="header-subtitle">FINANCIAL INTELLIGENCE UNIT</div>', unsafe_allow_html=True)
+    with c_head2:
+        st.markdown(f"<div style='text-align: right; color: #4b5563; font-size: 10px; font-family: monospace;'>{datetime.now().strftime('%d/%m %H:%M:%S')}</div>", unsafe_allow_html=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
     df = load_data(config.FILE_PENDING)
     
-    # --- CALCOLO METRICHE AVANZATE ---
-    profit = 0.0
-    active = 0
-    closed = 0
-    win_rate = 0.0
-    cap_exposed = 0.0
-    
-    # Metriche Finanziarie Nuove
-    roi = 0.0
-    velocity = 0.0
-    projected_annual = 0.0
-    total_staked_closed = 0.0 # Capitale giocato su scommesse chiuse
+    # --- CALCOLO KPI (Logica identica a prima) ---
+    profit = 0.0; active = 0; closed = 0; win_rate = 0.0; cap_exposed = 0.0
+    roi = 0.0; velocity = 0.0; projected_annual = 0.0; total_staked_closed = 0.0
 
     if not df.empty:
-        # Pulizia Dati
         if 'Profitto_Reale' in df.columns:
             df['Profitto_Reale'] = pd.to_numeric(df['Profitto_Reale'], errors='coerce').fillna(0)
             profit = df['Profitto_Reale'].sum()
         
-        # Pulizia Stake (Rimuove simbolo € e converte in float)
         if 'Stake_Euro' in df.columns:
             df['Stake_Clean'] = df['Stake_Euro'].astype(str).str.extract(r'(\d+)').astype(float).fillna(0)
-        else:
-            df['Stake_Clean'] = 0.0
+        else: df['Stake_Clean'] = 0.0
 
         if 'Stato_Trade' in df.columns:
-            # 1. Trade Attivi vs Chiusi
             active = df[df['Stato_Trade'] == 'APERTO'].shape[0]
             closed_df = df[df['Stato_Trade'].str.contains("CHIUSO", na=False)].copy()
             closed = closed_df.shape[0]
-            
-            # 2. Capitale Esposto (Solo Attivi)
-            if active > 0:
-                cap_exposed = df[df['Stato_Trade'] == 'APERTO']['Stake_Clean'].sum()
-
-            # 3. Analisi sui Chiusi (Per ROI e Proiezioni)
+            if active > 0: cap_exposed = df[df['Stato_Trade'] == 'APERTO']['Stake_Clean'].sum()
             if closed > 0:
-                # Win Rate
                 wins = closed_df[closed_df['Profitto_Reale'] > 0].shape[0]
                 win_rate = (wins / closed) * 100
-                
-                # ROI (Profitto Totale / Totale Puntato nei trade chiusi) * 100
                 total_staked_closed = closed_df['Stake_Clean'].sum()
-                if total_staked_closed > 0:
-                    roi = (profit / total_staked_closed) * 100
-                
-                # Velocity (Totale Puntato / Bankroll Iniziale)
+                if total_staked_closed > 0: roi = (profit / total_staked_closed) * 100
                 velocity = total_staked_closed / config.BANKROLL_TOTALE
-
-                # Proiezione Annuale (Basata sui giorni di attività)
                 if 'Data_Scan' in df.columns:
                     try:
                         df['Date_Obj'] = pd.to_datetime(df['Data_Scan'], errors='coerce')
                         first_date = df['Date_Obj'].min()
                         days_active = (datetime.now() - first_date).days
                         if days_active < 1: days_active = 1
-                        
-                        daily_avg = profit / days_active
-                        projected_annual = (daily_avg * 365) + config.BANKROLL_TOTALE
-                    except: 
-                        projected_annual = config.BANKROLL_TOTALE # Fallback
-                
-    # --- RIGA 1: KPI OPERATIVI ---
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Profitto Netto", f"{profit:+.2f} €", delta="Cassa")
-    c2.metric("Win Rate", f"{win_rate:.1f}%", delta="Precisione")
-    c3.metric("Capitale Esposto", f"{cap_exposed:.0f} €", delta=f"{active} In Gioco", delta_color="off")
-    c4.metric("Turnover (Velocity)", f"{velocity:.2f}x", delta="Giri Bankroll")
+                        projected_annual = ((profit / days_active) * 365) + config.BANKROLL_TOTALE
+                    except: projected_annual = config.BANKROLL_TOTALE
 
-    st.markdown("<br>", unsafe_allow_html=True)
+    # --- KPI DISPLAY (COMPATTO SU 5 COLONNE) ---
+    k1, k2, k3, k4, k5 = st.columns(5)
+    k1.metric("PROFITTO", f"{profit:+.2f}€", delta="Netto")
+    k2.metric("ROI %", f"{roi:.2f}%", delta="Yield")
+    k3.metric("WIN RATE", f"{win_rate:.0f}%", delta=f"{closed} Ops")
+    k4.metric("ESPOSIZIONE", f"{cap_exposed:.0f}€", delta=f"{active} Attivi", delta_color="off")
+    k5.metric("VELOCITY", f"{velocity:.2f}x", delta="Turnover")
 
-    # --- RIGA 2: INDICATORI PREVISIONALI (SPEEDOMETER & PROIEZIONE) ---
-    col_gauge, col_proj = st.columns([2, 1])
-    
-    with col_gauge:
-        # TACHIMETRO ROI (Performance Indicator)
-        # Colore dinamico: Rosso (<0), Blu (0-5%), Verde (>5%)
-        gauge_color = "#ef4444" # Rosso
-        if roi > 0: gauge_color = "#3b82f6" # Blu
-        if roi > 5: gauge_color = "#10b981" # Verde
+    st.markdown("---")
 
-        fig_gauge = go.Figure(go.Indicator(
-            mode = "gauge+number+delta",
-            value = roi,
-            domain = {'x': [0, 1], 'y': [0, 1]},
-            title = {'text': "SNIPER ROI VELOCITY", 'font': {'size': 20, 'color': '#94a3b8'}},
-            delta = {'reference': 5.0, 'increasing': {'color': "#10b981"}, 'decreasing': {'color': "#ef4444"}}, # Target 5% ROI
-            gauge = {
-                'axis': {'range': [-10, 20], 'tickwidth': 1, 'tickcolor': "white"},
-                'bar': {'color': gauge_color},
-                'bgcolor': "rgba(0,0,0,0)",
-                'borderwidth': 2,
-                'bordercolor': "#334155",
-                'steps': [
-                    {'range': [-10, 0], 'color': 'rgba(239, 68, 68, 0.2)'},
-                    {'range': [0, 5], 'color': 'rgba(59, 130, 246, 0.2)'},
-                    {'range': [5, 20], 'color': 'rgba(16, 185, 129, 0.2)'}
-                ],
-                'threshold': {
-                    'line': {'color': "white", 'width': 4},
-                    'thickness': 0.75,
-                    'value': roi
-                }
-            }
-        ))
-        fig_gauge.update_layout(paper_bgcolor = "rgba(0,0,0,0)", font = {'color': "white", 'family': "Inter"})
-        st.plotly_chart(fig_gauge, use_container_width=True)
+    # --- MAIN CONTENT GRID ---
+    c_main_sx, c_main_dx = st.columns([2, 1])
 
-    with col_proj:
-        st.subheader("🔮 Proiezione a 1 Anno")
-        st.markdown(f"""
-        <div style="background-color: #1e293b; padding: 20px; border-radius: 10px; border: 1px solid #334155; text-align: center;">
-            <div style="color: #94a3b8; font-size: 0.9rem; margin-bottom: 10px;">PREVISIONE BANKROLL</div>
-            <div style="color: #38bdf8; font-size: 2.5rem; font-weight: 800; text-shadow: 0 0 15px rgba(56, 189, 248, 0.4);">
-                {projected_annual:,.0f} €
-            </div>
-            <div style="color: #64748b; font-size: 0.8rem; margin-top: 10px;">
-                Basato sulla media giornaliera attuale.<br>
-                <i>Reinvestimento continuo.</i>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        # Mini Chart ROI
-        st.metric("ROI Attuale", f"{roi:.2f}%", help="Rendimento sul capitale investito")
-
-    # --- RIGA 3: GRAFICI STORICI ---
-    st.markdown("<br>", unsafe_allow_html=True)
-    g1, g2 = st.columns([2, 1])
-    
-    with g1:
-        st.subheader("📈 Crescita Bankroll (Reale)")
+    with c_main_sx:
+        st.markdown("#### 📈 PERFORMANCE TREND")
         if closed > 0:
             closed_df = df[df['Stato_Trade'].str.contains("CHIUSO", na=False)].copy()
             closed_df['N'] = range(1, len(closed_df)+1)
             closed_df['Cum'] = closed_df['Profitto_Reale'].cumsum()
             
-            fig = px.area(closed_df, x='N', y='Cum', markers=True)
-            fig.update_traces(line_color='#0ea5e9', fillcolor='rgba(14, 165, 233, 0.2)')
-            fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color='#cbd5e1', xaxis_title="Numero Operazioni", yaxis_title="Profitto (€)", showlegend=False, margin=dict(l=20,r=20,t=20,b=20))
-            st.plotly_chart(fig, use_container_width=True)
-        else: st.info("Chiudi i primi trade per attivare il grafico.")
-        
-    with g2:
-        st.subheader("🎯 Allocazione Sport")
-        if not df.empty and 'Sport' in df.columns:
-            sc = df['Sport'].value_counts()
-            fig2 = px.pie(values=sc.values, names=sc.index, hole=0.6, color_discrete_sequence=['#0ea5e9', '#10b981'])
-            fig2.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color='#cbd5e1', showlegend=True, margin=dict(t=20,b=20,l=20,r=20), legend=dict(orientation="h", y=-0.2))
-            st.plotly_chart(fig2, use_container_width=True)
+            # Grafico Minimalista
+            fig = px.area(closed_df, x='N', y='Cum')
+            fig.update_traces(line_color='#3b82f6', fillcolor='rgba(59, 130, 246, 0.1)')
+            fig.update_layout(
+                height=250, # Grafico basso e largo
+                margin=dict(l=0, r=0, t=10, b=0), # Zero margini
+                paper_bgcolor='rgba(0,0,0,0)', 
+                plot_bgcolor='rgba(0,0,0,0)', 
+                font_color='#6b7280',
+                xaxis=dict(showgrid=False, title=None),
+                yaxis=dict(showgrid=True, gridcolor='#1f2937', title=None),
+                showlegend=False
+            )
+            st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+        else:
+            st.info("Dati insufficienti per il grafico.")
 
-# --- RADAR ---
-elif page == "📡 Radar Mercati":
-    st.title("Radar Operativo")
-    c1, c2 = st.columns(2)
+    with c_main_dx:
+        st.markdown("#### 🚀 PROIEZIONE 1Y")
+        
+        # Tachimetro (Gauge) Piccolo
+        gauge_color = "#ef4444" 
+        if roi > 0: gauge_color = "#3b82f6"
+        if roi > 5: gauge_color = "#10b981"
+
+        fig_g = go.Figure(go.Indicator(
+            mode = "gauge+number",
+            value = roi,
+            number = {'suffix': "%", 'font': {'size': 20, 'color': 'white'}},
+            gauge = {
+                'axis': {'range': [-5, 15], 'tickwidth': 0},
+                'bar': {'color': gauge_color},
+                'bgcolor': "rgba(0,0,0,0)",
+                'borderwidth': 0,
+                'threshold': {'line': {'color': "white", 'width': 2}, 'thickness': 0.75, 'value': roi}
+            }
+        ))
+        fig_g.update_layout(height=120, margin=dict(l=10, r=10, t=20, b=0), paper_bgcolor='rgba(0,0,0,0)')
+        st.plotly_chart(fig_g, use_container_width=True, config={'displayModeBar': False})
+        
+        st.markdown(f"""
+        <div style="text-align: center; background: #111827; padding: 10px; border-radius: 8px; border: 1px solid #1f2937;">
+            <div style="font-size: 10px; color: #6b7280;">FORECAST</div>
+            <div style="font-size: 18px; font-weight: bold; color: #38bdf8;">{projected_annual:,.0f} €</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+# --- PAGINA 2: RADAR ---
+elif page == "Radar":
+    c1, c2 = st.columns([1, 1])
     with c1:
-        if st.button("🎾 SCANSIONA TENNIS"):
-            with st.spinner("..."): scanner_tennis.scan_tennis()
-            st.success("OK"); st.rerun()
+        if st.button("🎾 SCAN TENNIS"):
+            with st.spinner("Analisi Mercati..."): scanner_tennis.scan_tennis()
+            st.rerun()
     with c2:
-        if st.button("⚽ SCANSIONA CALCIO"):
-            with st.spinner("..."): scanner_calcio.scan_calcio()
-            st.success("OK"); st.rerun()
+        if st.button("⚽ SCAN CALCIO"):
+            with st.spinner("Analisi Mercati..."): scanner_calcio.scan_calcio()
+            st.rerun()
             
-    st.markdown("---")
+    st.markdown("<br>", unsafe_allow_html=True)
+    
     df = load_data(config.FILE_PENDING)
     if not df.empty:
         df_view = df[df['Stato_Trade'] == 'APERTO'] if 'Stato_Trade' in df.columns else df
+        
         if not df_view.empty:
-            st.subheader(f"⚡ Opportunità: {len(df_view)}")
+            st.markdown(f"**OPPORTUNITÀ LIVE ({len(df_view)})**")
             
-            # COLONNE AGGIORNATE
+            # Colonne Selezionate
             cols = ['Orario_Match', 'Match', 'Selezione', 'Quota_Ingresso', 'Target_Scalping', 'Quota_Sniper_Target', 'Stake_Euro', 'Valore_%']
             final = [c for c in cols if c in df_view.columns]
             
-            st.dataframe(df_view[final], use_container_width=True, hide_index=True, height=400,
+            # Tabella Compatta
+            st.dataframe(
+                df_view[final], 
+                use_container_width=True, 
+                hide_index=True, 
+                height=350,
                 column_config={
-                    "Quota_Ingresso": st.column_config.NumberColumn("Ingresso", format="%.2f"),
-                    "Target_Scalping": st.column_config.NumberColumn("🎯 Exit Scalp", format="%.2f"),
-                    "Quota_Sniper_Target": st.column_config.NumberColumn("🔫 Target Sniper", format="%.2f", help="Se è 0, entra subito."),
-                    "Stake_Euro": st.column_config.NumberColumn("💰 Stake (€)", format="%d €"),
-                    "Valore_%": st.column_config.ProgressColumn("Value", min_value=0, max_value=20, format="%f%%")
-                })
-        else: st.success("Nessun trade pendente.")
-    else: st.info("Radar vuoto.")
+                    "Orario_Match": st.column_config.TextColumn("Ora"),
+                    "Quota_Ingresso": st.column_config.NumberColumn("Quota", format="%.2f"),
+                    "Target_Scalping": st.column_config.NumberColumn("Exit", format="%.2f"),
+                    "Quota_Sniper_Target": st.column_config.NumberColumn("Target", format="%.2f"),
+                    "Stake_Euro": st.column_config.TextColumn("Stake"),
+                    "Valore_%": st.column_config.ProgressColumn("Value", min_value=0, max_value=20, format="%f")
+                }
+            )
+        else: st.info("Radar libero. In attesa di segnali.")
+    else: st.info("Nessun dato nel database.")
 
-# --- DIARIO ---
-elif page == "📝 Diario Ordini":
-    st.title("Diario")
+# --- PAGINA 3: DIARIO ---
+elif page == "Diario":
+    st.markdown('<div class="header-title">REGISTRO ORDINI</div>', unsafe_allow_html=True)
     df = load_data(config.FILE_PENDING)
     if not df.empty:
-        edited = st.data_editor(df, num_rows="dynamic", use_container_width=True,
+        edited = st.data_editor(
+            df, 
+            num_rows="dynamic", 
+            use_container_width=True,
+            height=600, # Più alta per vedere meglio
             column_config={
                 "Stato_Trade": st.column_config.SelectboxColumn("Stato", options=["APERTO", "CHIUSO (Scalping)", "CHIUSO (Stop Loss)", "CHIUSO (Value Bet Vinta)", "CHIUSO (Value Bet Persa)"], required=True, width="medium"),
                 "Profitto_Reale": st.column_config.NumberColumn("P/L (€)", format="%.2f €")
-            })
-        if st.button("💾 SALVA"):
+            }
+        )
+        if st.button("💾 SALVA MODIFICHE", type="primary"):
             edited.to_csv(config.FILE_PENDING, index=False)
-            st.success("Salvato!"); st.rerun()
-    else: st.warning("Vuoto.")
+            st.toast("Database Aggiornato!", icon="💾")
+            st.rerun()
+    else: st.warning("Diario vuoto.")
 
-# --- SISTEMA ---
-elif page == "⚙️ Sistema":
-    st.title("Sistema")
-    if st.button("🗑️ RESET DATABASE"):
-        if os.path.exists(config.FILE_PENDING): os.remove(config.FILE_PENDING)
-        st.warning("Database Resettato! Fai una nuova scansione."); st.rerun()
-    st.info(f"Bankroll: {config.BANKROLL_TOTALE}€ | Stake Max: {config.STAKE_MASSIMO}€")
+# --- PAGINA 4: SETTINGS ---
+elif page == "Settings":
+    st.markdown('<div class="header-title">SYSTEM CONFIG</div>', unsafe_allow_html=True)
+    
+    st.info(f"Bankroll Attuale: **{config.BANKROLL_TOTALE} €** | Stake Max: **{config.STAKE_MASSIMO} €**")
+    
+    c_danger, c_void = st.columns([1, 2])
+    with c_danger:
+        st.markdown("#### 🛑 ZONA PERICOLO")
+        if st.button("🗑️ RESET TOTALE DATABASE"):
+            if os.path.exists(config.FILE_PENDING): os.remove(config.FILE_PENDING)
+            st.toast("Database Eliminato.", icon="🔥")
+            st.rerun()
