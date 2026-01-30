@@ -114,7 +114,7 @@ def analizza_tennis_sniper(pinnacle_odds, soft_odds):
 def scan_tennis():
     print(f"--- 🚀 AVVIO SCANSIONE TENNIS (DEBUG) - {datetime.now()} ---")
     
-    # Intestazione 16 Colonne (Standardizzata)
+    # Intestazione 16 Colonne
     header = ['Sport', 'Data_Scan', 'Orario_Match', 'Torneo', 'Match', 'Selezione', 'Bookmaker', 'Quota_Ingresso', 'Pinnacle_Iniziale', 'Target_Scalping', 'Quota_Sniper_Target', 'Valore_%', 'Stake_Euro', 'Stato_Trade', 'Esito_Finale', 'Profitto_Reale']
     
     open_trades = []
@@ -146,21 +146,4 @@ def scan_tennis():
             events = resp.json()
             for event in events:
                 home, away = event['home_team'], event['away_team']
-                match_name = f"{home} vs {away}"
-                
-                pinna_raw = {}
-                p_map = {}
-                for b in event['bookmakers']:
-                    if b['key'] == 'pinnacle':
-                        for m in b['markets']:
-                             if m['key']=='h2h':
-                                for o in m['outcomes']: pinna_raw[o['name']] = o['price']
-                if len(pinna_raw)>=2:
-                    try: p_map = {'Home': pinna_raw[home], 'Away': pinna_raw[away]}
-                    except: pass
-                
-                # Watchdog
-                if p_map:
-                    for trade in open_trades:
-                        if trade['Match'] == match_name:
-                            check_watchdog(match
+                match_name = f"{
