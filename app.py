@@ -20,7 +20,7 @@ st.markdown("""
     /* 1. RESET GENERALE E FONT */
     html, body, [class*="css"] {
         font-family: 'Inter', sans-serif;
-        font-size: 14px; /* Testo più piccolo e professionale */
+        font-size: 14px;
     }
     h1, h2, h3 {
         font-family: 'Inter', sans-serif;
@@ -50,12 +50,10 @@ st.markdown("""
     }
     
     /* 5. METRICHE (KPI CARDS) CUSTOM */
-    /* Nascondiamo quelle default brutte e usiamo HTML custom nel codice Python, 
-       ma se usiamo st.metric le stilizziamo qui */
     div[data-testid="stMetric"] {
         background-color: #161b22;
         border: 1px solid #2d3748;
-        padding: 10px 15px; /* Molto meno padding */
+        padding: 10px 15px;
         border-radius: 8px;
         box-shadow: 0 2px 5px rgba(0,0,0,0.2);
     }
@@ -66,8 +64,8 @@ st.markdown("""
         margin-bottom: 2px !important;
     }
     div[data-testid="stMetricValue"] {
-        font-size: 20px !important; /* Numeri più piccoli rispetto a prima */
-        font-family: 'JetBrains Mono', monospace; /* Font stile codice per i numeri */
+        font-size: 20px !important;
+        font-family: 'JetBrains Mono', monospace;
         color: #e5e7eb !important;
     }
     
@@ -84,7 +82,7 @@ st.markdown("""
         color: white;
         border: none;
         border-radius: 6px;
-        height: 38px; /* Più bassi */
+        height: 38px;
         font-size: 13px;
         font-weight: 600;
         text-transform: uppercase;
@@ -95,12 +93,6 @@ st.markdown("""
         opacity: 0.9;
         box-shadow: 0 0 15px rgba(6, 182, 212, 0.4);
         transform: scale(1.01);
-    }
-    
-    /* 8. ALERT E BOX VARI */
-    .stAlert {
-        padding: 0.5rem 1rem;
-        border-radius: 6px;
     }
     
     /* TITOLI HEADER */
@@ -128,6 +120,7 @@ def load_data(f):
     return pd.DataFrame()
 
 def test_telegram_connection():
+    # Usa le chiavi da config se esistono, altrimenti fallback
     TOKEN = config.TELEGRAM_TOKEN if hasattr(config, 'TELEGRAM_TOKEN') else "8145327630:AAHJC6vDjvGUyPT0pKw63fyW53hTl_F873U"
     CHAT_ID = config.TELEGRAM_CHAT_ID if hasattr(config, 'TELEGRAM_CHAT_ID') else "5562163433"
     try:
@@ -137,20 +130,37 @@ def test_telegram_connection():
 
 # --- SIDEBAR (NAVIGAZIONE) ---
 with st.sidebar:
+    # --- LOGO UFFICIALE SNIPER ---
+    logo_url = "https://github.com/maxmaker15-debug/betting-sniper/blob/main/logo.jpg?raw=true"
+    
+    # CSS per renderlo rotondo e luminoso
+    st.markdown(f"""
+    <div style="text-align: center; margin-bottom: 20px;">
+        <img src="{logo_url}" style="
+            width: 130px; 
+            height: 130px; 
+            border-radius: 50%; 
+            border: 3px solid #38bdf8; /* Bordo Blu Neon */
+            box-shadow: 0 0 25px rgba(56, 189, 248, 0.4); /* Alone Luminoso */
+            object-fit: cover;
+        ">
+    </div>
+    """, unsafe_allow_html=True)
+    
     st.markdown("### 🦅 SNIPER PRO")
-    st.caption("v. 5.0 | Build: Stable")
+    st.caption("v. 5.1 | Build: Custom Logo")
     st.markdown("---")
     
-    # Menu con icone più pulite
+    # Menu Navigazione
     page = st.radio(
         "MENU OPERATIVO", 
         ["Dashboard", "Radar", "Diario", "Settings"],
-        format_func=lambda x: f" {x.upper()}" # Rende tutto maiuscolo e pulito
+        format_func=lambda x: f" {x.upper()}"
     )
     
     st.markdown("---")
     
-    # Sezione Stato rapido
+    # Status System
     st.markdown("<div style='font-size: 11px; color: #4b5563; margin-bottom: 5px;'>SYSTEM STATUS</div>", unsafe_allow_html=True)
     c_ping, c_ind = st.columns([3, 1])
     with c_ping:
@@ -158,7 +168,7 @@ with st.sidebar:
             if test_telegram_connection(): st.toast("Connesso", icon="✅")
             else: st.toast("Errore", icon="❌")
     with c_ind:
-        st.markdown("🟢") # Indicatore finto "Online"
+        st.markdown("🟢") 
 
 # --- PAGINA 1: DASHBOARD ---
 if page == "Dashboard":
@@ -174,7 +184,7 @@ if page == "Dashboard":
 
     df = load_data(config.FILE_PENDING)
     
-    # --- CALCOLO KPI (Logica identica a prima) ---
+    # --- CALCOLO KPI ---
     profit = 0.0; active = 0; closed = 0; win_rate = 0.0; cap_exposed = 0.0
     roi = 0.0; velocity = 0.0; projected_annual = 0.0; total_staked_closed = 0.0
 
