@@ -51,10 +51,10 @@ def check_watchdog(event_name, current_pinnacle_odds, trade_row):
 
         if quota_pinna_now > 0:
             if quota_pinna_now >= ingresso_betfair:
-                msg = f"🔴 ALLARME STOP LOSS: {event_name}\nLa quota Pinnacle ({quota_pinna_now}) ha superato il tuo ingresso ({ingresso_betfair})!\nChiudi subito la posizione."
+                msg = f"🔴 ALLARME STOP LOSS: {event_name}\nLa quota Pinnacle ({quota_pinna_now}) ha superato il tuo ingresso ({ingresso_betfair})!"
                 send_telegram(msg)
             elif quota_pinna_now > (pinna_inziale * 1.05):
-                msg = f"⚠️ WARNING DRIFT: {event_name}\nPinnacle si sta alzando: {pinna_inziale} ➡️ {quota_pinna_now}.\nAttenzione al valore."
+                msg = f"⚠️ WARNING DRIFT: {event_name}\nPinnacle si sta alzando."
                 send_telegram(msg)
     except: pass
 
@@ -96,7 +96,8 @@ def analizza_tennis_sniper(pinnacle_odds, soft_odds):
     return migliore_opzione
 
 def scan_tennis():
-    header = ['Sport', 'Data_Scan', 'Orario_Match', 'Torneo', 'Match', 'Selezione', 'Bookmaker', 'Quota_Ingresso', 'Pinnacle_Iniziale', 'Target_Scalping', 'Valore_%', 'Stake_Euro', 'Stato_Trade', 'Esito_Finale', 'Profitto_Reale']
+    # NUOVA INTESTAZIONE
+    header = ['Sport', 'Data_Scan', 'Orario_Match', 'Torneo', 'Match', 'Selezione', 'Bookmaker', 'Quota_Ingresso', 'Pinnacle_Iniziale', 'Target_Scalping', 'Quota_Sniper_Target', 'Valore_%', 'Stake_Euro', 'Stato_Trade', 'Esito_Finale', 'Profitto_Reale']
     
     open_trades = []
     if os.path.exists(config.FILE_PENDING):
@@ -129,18 +130,15 @@ def scan_tennis():
                         for m in b['markets']:
                              if m['key']=='h2h':
                                 for o in m['outcomes']: pinna_raw[o['name']] = o['price']
-                
                 if len(pinna_raw)>=2:
                     try: p_map = {'Home': pinna_raw[home], 'Away': pinna_raw[away]}
                     except: pass
                 
-                # --- WATCHDOG LOGIC ---
                 if p_map:
                     for trade in open_trades:
                         if trade['Match'] == match_name:
                             check_watchdog(match_name, p_map, trade)
 
-                # --- SCANNER LOGIC ---
                 if len(pinna_raw)<2: continue
                 for b in event['bookmakers']:
                     if 'betfair' in b['title'].lower():
@@ -161,20 +159,20 @@ def scan_tennis():
                                     sel_name = home if res['sel']=='Home' else away
                                     label_status = f"🟢 {res['status']}" if res['status']=="VALUE" else f"🟡 {res['status']}"
                                     
-                                    stake_info = ""
-                                    q_scalp = 0
+                                    stake_euro = 0
+                                    quota_sniper = 0
+                                    q_scalp = calcola_target_scalping(res['q_att']) if res['status'] == "VALUE" else calcola_target_scalping(res['q_req'])
+
                                     if res['status'] == "VALUE":
-                                        euro = calcola_stake(res['val'], res['q_att'])
-                                        stake_info = f"{euro}€"
-                                        q_scalp = calcola_target_scalping(res['q_att'])
+                                        stake_euro = calcola_stake(res['val'], res['q_att'])
                                     else:
-                                        stake_info = f"TARGET: {res['q_req']}"
-                                        q_scalp = calcola_target_scalping(res['q_req'])
+                                        quota_sniper = res['q_req']
                                     
                                     with open(config.FILE_PENDING, 'a', newline='', encoding='utf-8') as f:
-                                        csv.writer(f).writerow(['TENNIS', datetime.now().strftime("%Y-%m-%d %H:%M"), converti_orario(event.get('commence_time', 'N/A')), torneo['title'], f"{home} vs {away}", sel_name, b['title'], res['q_att'], res['q_real'], q_scalp, f"{label_status} {res['val']}%", stake_info, 'APERTO', '', ''])
+                                        csv.writer(f).writerow(['TENNIS', datetime.now().strftime("%Y-%m-%d %H:%M"), converti_orario(event.get('commence_time', 'N/A')), torneo['title'], f"{home} vs {away}", sel_name, b['title'], res['q_att'], res['q_real'], q_scalp, quota_sniper, f"{label_status} {res['val']}%", stake_euro, 'APERTO', '', ''])
                                     
                                     emoji = "🟢" if res['status'] == "VALUE" else "🟡"
-                                    msg = f"{emoji} TENNIS NUOVO:\n🎾 {home} vs {away}\n👉 {sel_name}\n\n🔹 BETFAIR: {res['q_att']}\n📉 PINNACLE: {res['q_real']}\n🎯 EXIT SCALP: {q_scalp}\n💰 STAKE: {stake_info}"
+                                    msg_stake = f"{stake_euro}€" if stake_euro > 0 else f"ATTENDI {quota_sniper}"
+                                    msg = f"{emoji} TENNIS: {sel_name}\n🎾 {home} vs {away}\n🔹 INGRESSO: {res['q_att']}\n📉 PINNACLE: {res['q_real']}\n💰 AZIONE: {msg_stake}"
                                     send_telegram(msg)
     except: pass
