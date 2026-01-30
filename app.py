@@ -16,14 +16,20 @@ st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
     html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
+    
+    /* SFONDO */
     .stApp {
         background-color: #0b1120;
         background-image: radial-gradient(at 50% 0%, #172a46 0px, transparent 50%);
     }
+    
+    /* SIDEBAR */
     section[data-testid="stSidebar"] {
         background-color: #0f172a;
         border-right: 1px solid #1e293b;
     }
+    
+    /* CARDS & TABLES */
     div[data-testid="stMetric"], div[data-testid="stDataFrame"] {
         background-color: #1e293b;
         padding: 20px;
@@ -31,6 +37,8 @@ st.markdown("""
         border: 1px solid #334155;
         box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
     }
+    
+    /* TESTI */
     div[data-testid="stMetricLabel"] {
         color: #94a3b8;
         font-size: 0.9rem;
@@ -41,6 +49,8 @@ st.markdown("""
         color: #f8fafc;
         font-weight: 800;
     }
+    
+    /* BOTTONI */
     .stButton>button {
         width: 100%;
         height: 50px;
@@ -52,6 +62,8 @@ st.markdown("""
         transition: all 0.3s ease;
     }
     .stButton>button:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(16, 185, 129, 0.6); }
+    
+    /* TITOLI */
     h1 {
         background: linear-gradient(90deg, #38bdf8, #818cf8);
         -webkit-background-clip: text;
@@ -81,7 +93,7 @@ def test_telegram_connection():
 with st.sidebar:
     st.image("https://cdn-icons-png.flaticon.com/512/7269/7269877.png", width=60)
     st.title("SNIPER PRO")
-    st.markdown("<div style='font-size: 12px; color: #64748b; margin-top: -15px;'>V. 2.2 - STABLE</div>", unsafe_allow_html=True)
+    st.markdown("<div style='font-size: 12px; color: #64748b; margin-top: -15px;'>V. 3.0 - FIX COLONNE</div>", unsafe_allow_html=True)
     st.markdown("---")
     page = st.radio("MENU", ["📊 Dashboard", "📡 Radar Mercati", "📝 Diario Ordini", "⚙️ Sistema"])
     st.markdown("---")
@@ -112,11 +124,13 @@ if page == "📊 Dashboard":
             wins = closed_df[closed_df['Profitto_Reale'] > 0].shape[0]
             if closed > 0: win_rate = (wins / closed) * 100
             
+            # Calcolo capitale esposto (solo se la colonna Stake esiste)
             if active > 0 and 'Stake_Euro' in df.columns:
                 try:
                     op = df[df['Stato_Trade'] == 'APERTO'].copy()
-                    op['Stake_Clean'] = op['Stake_Euro'].astype(str).str.extract(r'(\d+)').astype(float)
-                    cap_exposed = op['Stake_Clean'].sum()
+                    # Convertiamo in numero, gestendo eventuali errori
+                    op['Stake_Euro'] = pd.to_numeric(op['Stake_Euro'], errors='coerce').fillna(0)
+                    cap_exposed = op['Stake_Euro'].sum()
                 except: pass
 
     c1, c2, c3, c4 = st.columns(4)
@@ -145,6 +159,7 @@ if page == "📊 Dashboard":
         st.subheader("🎯 Mix Sport")
         if not df.empty and 'Sport' in df.columns:
             sc = df['Sport'].value_counts()
+            # FIX: Usiamo px.pie correttamente
             fig2 = px.pie(values=sc.values, names=sc.index, hole=0.6, color_discrete_sequence=['#0ea5e9', '#10b981'])
             fig2.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color='#cbd5e1', showlegend=True, margin=dict(t=20,b=20,l=20,r=20), legend=dict(orientation="h", y=-0.2))
             st.plotly_chart(fig2, use_container_width=True)
@@ -168,13 +183,17 @@ elif page == "📡 Radar Mercati":
         df_view = df[df['Stato_Trade'] == 'APERTO'] if 'Stato_Trade' in df.columns else df
         if not df_view.empty:
             st.subheader(f"⚡ Opportunità: {len(df_view)}")
-            cols = ['Orario_Match', 'Match', 'Selezione', 'Quota_Ingresso', 'Pinnacle_Iniziale', 'Target_Scalping', 'Stake_Euro', 'Valore_%']
+            
+            # NUOVE COLONNE CORRETTE
+            cols = ['Orario_Match', 'Match', 'Selezione', 'Quota_Ingresso', 'Target_Scalping', 'Quota_Sniper_Target', 'Stake_Euro', 'Valore_%']
             final = [c for c in cols if c in df_view.columns]
+            
             st.dataframe(df_view[final], use_container_width=True, hide_index=True, height=400,
                 column_config={
-                    "Quota_Ingresso": st.column_config.NumberColumn("Ingr.", format="%.2f"),
-                    "Target_Scalping": st.column_config.NumberColumn("🎯 Exit", format="%.2f"),
-                    "Pinnacle_Iniziale": st.column_config.NumberColumn("📉 Pinna", format="%.2f"),
+                    "Quota_Ingresso": st.column_config.NumberColumn("Ingresso", format="%.2f"),
+                    "Target_Scalping": st.column_config.NumberColumn("🎯 Exit Scalp", format="%.2f"),
+                    "Quota_Sniper_Target": st.column_config.NumberColumn("🔫 Target Sniper", format="%.2f", help="Se è 0, entra subito. Se > 0, attendi questa quota."),
+                    "Stake_Euro": st.column_config.NumberColumn("💰 Stake (€)", format="%d €"),
                     "Valore_%": st.column_config.ProgressColumn("Value", min_value=0, max_value=20, format="%f%%")
                 })
         else: st.success("Nessun trade pendente.")
@@ -200,5 +219,5 @@ elif page == "⚙️ Sistema":
     st.title("Sistema")
     if st.button("🗑️ RESET DATABASE"):
         if os.path.exists(config.FILE_PENDING): os.remove(config.FILE_PENDING)
-        st.warning("Resettato."); st.rerun()
+        st.warning("Database Resettato! Fai una nuova scansione."); st.rerun()
     st.info(f"Bankroll: {config.BANKROLL_TOTALE}€ | Stake Max: {config.STAKE_MASSIMO}€")
