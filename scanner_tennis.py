@@ -146,4 +146,64 @@ def scan_tennis():
             events = resp.json()
             for event in events:
                 home, away = event['home_team'], event['away_team']
-                match_name = f"{
+                match_name = f"{home} vs {away}"
+                
+                pinna_raw = {}
+                p_map = {}
+                for b in event['bookmakers']:
+                    if b['key'] == 'pinnacle':
+                        for m in b['markets']:
+                             if m['key']=='h2h':
+                                for o in m['outcomes']: pinna_raw[o['name']] = o['price']
+                if len(pinna_raw)>=2:
+                    try: p_map = {'Home': pinna_raw[home], 'Away': pinna_raw[away]}
+                    except: pass
+                
+                # Watchdog
+                if p_map:
+                    for trade in open_trades:
+                        if trade['Match'] == match_name:
+                            check_watchdog(match_name, p_map, trade)
+
+                # Scansione
+                if len(pinna_raw)<2: continue
+                for b in event['bookmakers']:
+                    if 'betfair' in b['title'].lower():
+                        soft = {}
+                        for m in b['markets']:
+                             if m['key']=='h2h':
+                                for o in m['outcomes']:
+                                    if o['name']==home: soft['Home']=o['price']
+                                    elif o['name']==away: soft['Away']=o['price']
+                        if len(soft)==2:
+                            res = analizza_tennis_sniper(p_map, soft)
+                            if res:
+                                gia_presente = False
+                                for t in open_trades:
+                                    if t['Match'] == match_name and t['Selezione'] == res['sel']: gia_presente = True
+                                
+                                if not gia_presente:
+                                    print(f"🔥 OCCASIONE TENNIS: {match_name}")
+                                    sel_name = home if res['sel']=='Home' else away
+                                    label_status = f"🟢 {res['status']}" if res['status']=="VALUE" else f"🟡 {res['status']}"
+                                    
+                                    stake_euro = 0
+                                    quota_sniper = 0
+                                    q_scalp = calcola_target_scalping(res['q_att']) if res['status'] == "VALUE" else calcola_target_scalping(res['q_req'])
+
+                                    if res['status'] == "VALUE":
+                                        stake_euro = calcola_stake(res['val'], res['q_att'])
+                                    else:
+                                        quota_sniper = res['q_req']
+                                    
+                                    with open(config.FILE_PENDING, 'a', newline='', encoding='utf-8') as f:
+                                        csv.writer(f).writerow(['TENNIS', datetime.now().strftime("%Y-%m-%d %H:%M"), converti_orario(event.get('commence_time', 'N/A')), torneo['title'], f"{home} vs {away}", sel_name, b['title'], res['q_att'], res['q_real'], q_scalp, quota_sniper, f"{label_status} {res['val']}%", stake_euro, 'APERTO', '', ''])
+                                    
+                                    emoji = "🟢" if res['status'] == "VALUE" else "🟡"
+                                    msg_stake = f"{stake_euro}€" if stake_euro > 0 else f"ATTENDI {quota_sniper}"
+                                    msg = f"{emoji} TENNIS: {sel_name}\n🎾 {home} vs {away}\n🔹 INGRESSO: {res['q_att']}\n📉 PINNACLE: {res['q_real']}\n💰 AZIONE: {msg_stake}"
+                                    send_telegram(msg)
+    except Exception as e: print(f"Errore Tennis: {e}")
+
+if __name__ == "__main__":
+    scan_tennis()
