@@ -3,12 +3,11 @@ from datetime import datetime
 import dateutil.parser
 
 # --- ⚠️ CONFIGURAZIONE DIRETTA (HARDCODED) ⚠️ ---
-# Inseriamo le chiavi direttamente qui per bypassare problemi di lettura file su GitHub
 API_KEY = "78f03ed8354c09f7ac591fe7e105deda"
 TELEGRAM_TOKEN = "8145327630:AAHJC6vDjvGUyPT0pKw63fyW53hTl_F873U"
 TELEGRAM_CHAT_ID = "5562163433"
 
-# Parametri operativi
+# Parametri
 REGIONS = 'eu'
 MARKETS = 'h2h'
 ODDS_FORMAT = 'decimal'
@@ -17,11 +16,10 @@ def send_telegram(msg):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     try: 
         resp = requests.get(url, params={"chat_id": TELEGRAM_CHAT_ID, "text": msg})
-        # Log per il Debug su GitHub Actions
         if resp.status_code == 200:
-            print("✅ TELEGRAM: Messaggio inviato correttamente.")
+            print("✅ TELEGRAM: Messaggio inviato.")
         else:
-            print(f"❌ TELEGRAM ERROR {resp.status_code}: {resp.text}")
+            print(f"❌ TELEGRAM ERROR {resp.status_code}")
     except Exception as e: 
         print(f"❌ TELEGRAM CONNECTION ERROR: {e}")
 
@@ -48,6 +46,7 @@ def calcola_stake(valore_perc, quota_netta):
     except: return 0
 
 def calcola_target_scalping(quota_ingresso):
+    # Calcola l'uscita per fare profitto (Drop della quota del 2.5% circa)
     target = quota_ingresso - (quota_ingresso * 0.025) 
     if target < 1.01: target = 1.01
     return round(target, 2)
@@ -59,7 +58,6 @@ def check_watchdog(event_name, current_pinnacle_odds, trade_row):
         sel = trade_row['Selezione']
         
         quota_pinna_now = 0
-        # Logica matching selezione
         if sel in current_pinnacle_odds:
             quota_pinna_now = current_pinnacle_odds[sel]
         elif sel == 'Pareggio' and 'Draw' in current_pinnacle_odds:
@@ -69,7 +67,7 @@ def check_watchdog(event_name, current_pinnacle_odds, trade_row):
             elif 'Away' in str(sel) or trade_row['Match'].split(' vs ')[1] in str(sel): quota_pinna_now = current_pinnacle_odds.get('Away', 0)
 
         if quota_pinna_now > 0:
-            print(f"🐶 WATCHDOG: {event_name} - Ingresso: {ingresso_betfair}, Pinna Ora: {quota_pinna_now}") # Debug
+            print(f"🐶 WATCHDOG: {event_name} - Ingresso: {ingresso_betfair}, Pinna Ora: {quota_pinna_now}")
             
             if quota_pinna_now >= ingresso_betfair:
                 msg = f"🔴 ALLARME STOP LOSS: {event_name}\nLa quota Pinnacle ({quota_pinna_now}) ha superato il tuo ingresso ({ingresso_betfair})!\nChiudi subito."
@@ -120,7 +118,6 @@ def analizza_calcio_sniper(pinnacle_odds, soft_odds):
 def scan_calcio():
     print(f"--- 🚀 AVVIO SCANSIONE CALCIO (DEBUG) - {datetime.now()} ---")
     
-    # Intestazione CSV Aggiornata (16 colonne)
     header = ['Sport', 'Data_Scan', 'Orario_Match', 'Torneo', 'Match', 'Selezione', 'Bookmaker', 'Quota_Ingresso', 'Pinnacle_Iniziale', 'Target_Scalping', 'Quota_Sniper_Target', 'Valore_%', 'Stake_Euro', 'Stato_Trade', 'Esito_Finale', 'Profitto_Reale']
     
     open_trades = []
@@ -129,8 +126,7 @@ def scan_calcio():
             df = pd.read_csv(config.FILE_PENDING)
             if 'Stato_Trade' in df.columns:
                 open_trades = df[df['Stato_Trade'] == 'APERTO'].to_dict('records')
-            print(f"📂 Caricati {len(open_trades)} trade aperti per Watchdog.")
-        except Exception as e: print(f"Errore lettura CSV: {e}")
+        except: pass
     else:
          with open(config.FILE_PENDING, 'w', newline='', encoding='utf-8') as f:
             csv.writer(f).writerow(header)
@@ -141,27 +137,17 @@ def scan_calcio():
         'soccer_uefa_champions_league', 'soccer_uefa_europa_league', 'soccer_uefa_europa_conference_league'
     ]
     
-    total_events = 0
-    
     for league in leagues:
         print(f"🔍 Analisi Lega: {league}...")
         try:
-            # CHIAMATA API DIRETTA
             resp = requests.get(f'https://api.the-odds-api.com/v4/sports/{league}/odds', params={'apiKey': API_KEY, 'regions': REGIONS, 'markets': MARKETS, 'oddsFormat': ODDS_FORMAT})
-            
-            if resp.status_code != 200:
-                print(f"❌ ERRORE API {league}: {resp.status_code} - {resp.text}")
-                continue
+            if resp.status_code != 200: continue
 
             events = resp.json()
-            print(f"   -> Trovati {len(events)} eventi.")
-            total_events += len(events)
-            
             for event in events:
                 home, away = event['home_team'], event['away_team']
                 match_name = f"{home} vs {away}"
                 
-                # Estrazione Pinnacle
                 pinna_raw = {}
                 p_map = {}
                 for b in event['bookmakers']:
@@ -173,7 +159,6 @@ def scan_calcio():
                      try: p_map = {'Home': pinna_raw[home], 'Draw': pinna_raw['Draw'], 'Away': pinna_raw[away]}
                      except: pass
 
-                # Watchdog Check
                 if p_map:
                     for trade in open_trades:
                         if trade['Match'] == match_name:
@@ -181,7 +166,6 @@ def scan_calcio():
 
                 if len(pinna_raw)<3: continue
                 
-                # Analisi Value
                 for b in event['bookmakers']:
                     if 'betfair' in b['title'].lower():
                         soft = {}
@@ -199,7 +183,7 @@ def scan_calcio():
                                     if t['Match'] == match_name and t['Selezione'] == res['sel']: gia_presente = True
                                 
                                 if not gia_presente:
-                                    print(f"🔥 OCCASIONE TROVATA: {match_name}")
+                                    print(f"🔥 OCCASIONE: {match_name}")
                                     sel_name = home if res['sel']=='Home' else (away if res['sel']=='Away' else 'Pareggio')
                                     label_status = f"🟢 {res['status']}" if res['status']=="VALUE" else f"🟡 {res['status']}"
                                     
@@ -209,9 +193,7 @@ def scan_calcio():
 
                                     if res['status'] == "VALUE":
                                         stake_euro = calcola_stake(res['val'], res['q_att'])
-                                        quota_sniper = 0
                                     else:
-                                        stake_euro = 0
                                         quota_sniper = res['q_req']
 
                                     with open(config.FILE_PENDING, 'a', newline='', encoding='utf-8') as f:
@@ -219,12 +201,12 @@ def scan_calcio():
                                     
                                     emoji = "🟢" if res['status'] == "VALUE" else "🟡"
                                     msg_stake = f"{stake_euro}€" if stake_euro > 0 else f"ATTENDI {quota_sniper}"
-                                    msg = f"{emoji} CALCIO: {sel_name}\n🆚 {home} vs {away}\n🔹 INGRESSO: {res['q_att']}\n📉 PINNACLE: {res['q_real']}\n💰 AZIONE: {msg_stake}"
+                                    
+                                    # NOTIFICA CON TARGET EXIT AGGIUNTO
+                                    msg = f"{emoji} CALCIO: {sel_name}\n🆚 {home} vs {away}\n🔹 INGRESSO: {res['q_att']}\n🎯 TARGET EXIT: {q_scalp}\n📉 PINNACLE: {res['q_real']}\n💰 AZIONE: {msg_stake}"
                                     send_telegram(msg)
-        except Exception as e:
-            print(f"❌ ERRORE NEL LOOP LEGA: {e}")
-
-    print(f"--- ✅ SCANSIONE TERMINATA. Totale eventi analizzati: {total_events} ---")
+        except: pass
+    print("--- SCANSIONE COMPLETATA ---")
 
 if __name__ == "__main__":
     scan_calcio()
