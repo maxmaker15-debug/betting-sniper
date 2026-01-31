@@ -60,7 +60,6 @@ def check_watchdog(event_name, current_pinnacle_odds, trade_row):
         if sel in current_pinnacle_odds:
             quota_pinna_now = current_pinnacle_odds[sel]
         else:
-            # Tentativo di matching approssimativo
             if 'Home' in str(sel) or trade_row['Match'].split(' vs ')[0] in str(sel): quota_pinna_now = current_pinnacle_odds.get('Home', 0)
             elif 'Away' in str(sel) or trade_row['Match'].split(' vs ')[1] in str(sel): quota_pinna_now = current_pinnacle_odds.get('Away', 0)
 
@@ -114,7 +113,6 @@ def analizza_tennis_sniper(pinnacle_odds, soft_odds):
 def scan_tennis():
     print(f"--- 🚀 AVVIO SCANSIONE TENNIS (DEBUG) - {datetime.now()} ---")
     
-    # Intestazione 16 Colonne
     header = ['Sport', 'Data_Scan', 'Orario_Match', 'Torneo', 'Match', 'Selezione', 'Bookmaker', 'Quota_Ingresso', 'Pinnacle_Iniziale', 'Target_Scalping', 'Quota_Sniper_Target', 'Valore_%', 'Stake_Euro', 'Stato_Trade', 'Esito_Finale', 'Profitto_Reale']
     
     open_trades = []
@@ -129,7 +127,6 @@ def scan_tennis():
             csv.writer(f).writerow(header)
 
     try:
-        # TEST CONNESSIONE
         resp = requests.get('https://api.the-odds-api.com/v4/sports', params={'apiKey': API_KEY})
         if resp.status_code != 200:
             print(f"❌ ERRORE API LISTA SPORT: {resp.status_code}")
@@ -159,13 +156,11 @@ def scan_tennis():
                     try: p_map = {'Home': pinna_raw[home], 'Away': pinna_raw[away]}
                     except: pass
                 
-                # Watchdog
                 if p_map:
                     for trade in open_trades:
                         if trade['Match'] == match_name:
                             check_watchdog(match_name, p_map, trade)
 
-                # Scansione
                 if len(pinna_raw)<2: continue
                 for b in event['bookmakers']:
                     if 'betfair' in b['title'].lower():
@@ -201,9 +196,12 @@ def scan_tennis():
                                     
                                     emoji = "🟢" if res['status'] == "VALUE" else "🟡"
                                     msg_stake = f"{stake_euro}€" if stake_euro > 0 else f"ATTENDI {quota_sniper}"
-                                    msg = f"{emoji} TENNIS: {sel_name}\n🎾 {home} vs {away}\n🔹 INGRESSO: {res['q_att']}\n📉 PINNACLE: {res['q_real']}\n💰 AZIONE: {msg_stake}"
+                                    
+                                    # NOTIFICA CON TARGET EXIT
+                                    msg = f"{emoji} TENNIS: {sel_name}\n🎾 {home} vs {away}\n🔹 INGRESSO: {res['q_att']}\n🎯 TARGET EXIT: {q_scalp}\n📉 PINNACLE: {res['q_real']}\n💰 AZIONE: {msg_stake}"
                                     send_telegram(msg)
-    except Exception as e: print(f"Errore Tennis: {e}")
+    except: pass
+    print("--- SCANSIONE COMPLETATA ---")
 
 if __name__ == "__main__":
     scan_tennis()
