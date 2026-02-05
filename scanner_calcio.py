@@ -7,13 +7,28 @@ API_KEY = config.API_KEY
 TELEGRAM_TOKEN = "8145327630:AAHJC6vDjvGUyPT0pKw63fyW53hTl_F873U"
 TELEGRAM_CHAT_ID = "5562163433"
 
-# --- WHITELIST COMPETIZIONI ELITE ---
+# --- 🔒 WHITELIST BLINDATA (Solo questi passano) ---
 COMPETIZIONI_ELITE = [
-    'soccer_italy_serie_a', 'soccer_italy_serie_b',
-    'soccer_england_premier_league', 'soccer_england_championship',
-    'soccer_spain_la_liga', 'soccer_germany_bundesliga',
-    'soccer_france_ligue_one', 'soccer_netherlands_eredivisie',
-    'soccer_uefa_champions_league', 'soccer_uefa_europa_league',
+    # ITALIA
+    'soccer_italy_serie_a', 
+    'soccer_italy_serie_b',
+    # INGHILTERRA
+    'soccer_england_premier_league', 
+    'soccer_england_championship',
+    # SPAGNA
+    'soccer_spain_la_liga', 
+    'soccer_spain_segunda_division',
+    # GERMANIA
+    'soccer_germany_bundesliga', 
+    'soccer_germany_bundesliga2',
+    # FRANCIA
+    'soccer_france_ligue_one',
+    'soccer_france_ligue_two',
+    # OLANDA
+    'soccer_netherlands_eredivisie',
+    # EUROPEE
+    'soccer_uefa_champions_league', 
+    'soccer_uefa_europa_league',
     'soccer_uefa_europa_conference_league'
 ]
 
@@ -75,7 +90,7 @@ def check_watchdog(event_name, current_pinnacle_odds, trade_row):
     except: pass
 
 def scan_calcio():
-    print(f"--- ⚽ SCANSIONE CALCIO (V9 FULL INFO) - {datetime.now()} ---")
+    print(f"--- ⚽ SCANSIONE CALCIO (V10 BUNKER) - {datetime.now()} ---")
     
     header = ['Sport', 'Data_Scan', 'Orario_Match', 'Torneo', 'Match', 'Selezione', 'Bookmaker', 'Quota_Ingresso', 'Pinnacle_Iniziale', 'Target_Scalping', 'Quota_Sniper_Target', 'Valore_%', 'Stake_Euro', 'Stato_Trade', 'Esito_Finale', 'Profitto_Reale']
     
@@ -92,12 +107,23 @@ def scan_calcio():
         resp = requests.get('https://api.the-odds-api.com/v4/sports', params={'apiKey': API_KEY})
         if resp.status_code != 200: return
         
-        # LOGICA WHITELIST
+        # --- FILTRO VISIVO ---
         soccer_leagues = []
-        for s in resp.json():
-            if s['key'] in COMPETIZIONI_ELITE:
-                soccer_leagues.append(s)
+        campionati_scartati = 0
         
+        print("🔍 VERIFICA FILTRI COMPETIZIONI:")
+        for s in resp.json():
+            # Controlla se è calcio MA non è nella lista Elite
+            if 'soccer' in s['key']:
+                if s['key'] in COMPETIZIONI_ELITE:
+                    soccer_leagues.append(s)
+                    # print(f"   ✅ ACCETTATO: {s['title']}") # Decommenta per lista completa
+                else:
+                    campionati_scartati += 1
+                    # print(f"   🚫 IGNORATO: {s['title']}") # Decommenta per vedere cosa scarta
+        
+        print(f"📊 REPORT FILTRI: {len(soccer_leagues)} campionati accettati | {campionati_scartati} campionati minori/esotici scartati.")
+
         match_analizzati = 0
         now_utc = datetime.now(timezone.utc)
 
@@ -166,20 +192,17 @@ def scan_calcio():
                                         q_scalp = 0
                                         quota_reale_pinna = round(1/real_prob[sel_name], 2)
                                         
-                                        # Calcolo Stake e Target sempre
                                         if status == "VALUE":
                                             stake_euro = calcola_stake(ev_perc, soft_price)
                                             q_scalp = calcola_target_scalping(soft_price)
                                         else:
-                                            # Per i gialli, calcoliamo i target ideali
                                             quota_sniper = calcola_quota_target(real_prob[sel_name])
-                                            stake_euro = calcola_stake(ev_perc, quota_sniper) # Stake ipotetico sul target
-                                            q_scalp = calcola_target_scalping(soft_price) # Scalp basato sull'ingresso attuale
+                                            stake_euro = calcola_stake(ev_perc, quota_sniper)
+                                            q_scalp = calcola_target_scalping(soft_price)
 
                                         with open(config.FILE_PENDING, 'a', newline='', encoding='utf-8') as f:
                                             csv.writer(f).writerow(['CALCIO', datetime.now().strftime("%Y-%m-%d %H:%M"), converti_orario(event.get('commence_time', 'N/A')), league['title'], match_name, sel_name, b['title'], soft_price, quota_reale_pinna, q_scalp, quota_sniper, f"{status} {ev_perc}%", stake_euro, 'APERTO', '', ''])
                                         
-                                        # COSTRUZIONE MESSAGGIO COMPLETO
                                         emoji = "🟢" if status == "VALUE" else "🟡"
                                         
                                         msg = (
@@ -191,6 +214,13 @@ def scan_calcio():
                                             f"💰 STAKE: {stake_euro}€\n"
                                             f"🎯 TARGET SCALP: {q_scalp}"
                                         )
-                                        
                                         if status == "ATTESA":
                                             msg += f"\n⏳ QUOTA IDEALE: {quota_sniper}"
+                                        
+                                        send_telegram(msg)
+
+    except Exception as e: print(f"Errore Calcio: {e}")
+    print("--- SCANSIONE ELITE COMPLETATA ---")
+
+if __name__ == "__main__":
+    scan_calcio()
