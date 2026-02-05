@@ -7,29 +7,15 @@ API_KEY = config.API_KEY
 TELEGRAM_TOKEN = "8145327630:AAHJC6vDjvGUyPT0pKw63fyW53hTl_F873U"
 TELEGRAM_CHAT_ID = "5562163433"
 
-# --- 🔒 WHITELIST BLINDATA (Solo questi passano) ---
+# --- 🔒 WHITELIST BLINDATA ---
 COMPETIZIONI_ELITE = [
-    # ITALIA
-    'soccer_italy_serie_a', 
-    'soccer_italy_serie_b',
-    # INGHILTERRA
-    'soccer_england_premier_league', 
-    'soccer_england_championship',
-    # SPAGNA
-    'soccer_spain_la_liga', 
-    'soccer_spain_segunda_division',
-    # GERMANIA
-    'soccer_germany_bundesliga', 
-    'soccer_germany_bundesliga2',
-    # FRANCIA
-    'soccer_france_ligue_one',
-    'soccer_france_ligue_two',
-    # OLANDA
+    'soccer_italy_serie_a', 'soccer_italy_serie_b',
+    'soccer_england_premier_league', 'soccer_england_championship',
+    'soccer_spain_la_liga', 'soccer_spain_segunda_division',
+    'soccer_germany_bundesliga', 'soccer_germany_bundesliga2',
+    'soccer_france_ligue_one', 'soccer_france_ligue_two',
     'soccer_netherlands_eredivisie',
-    # EUROPEE
-    'soccer_uefa_champions_league', 
-    'soccer_uefa_europa_league',
-    'soccer_uefa_europa_conference_league'
+    'soccer_uefa_champions_league', 'soccer_uefa_europa_league', 'soccer_uefa_europa_conference_league'
 ]
 
 # --- PARAMETRI ---
@@ -61,7 +47,12 @@ def calcola_stake(valore_perc, quota_netta):
         kelly_perc = (valore_perc / 100) / (quota_netta - 1)
         stake_calcolato = config.BANKROLL_TOTALE * config.KELLY_FRACTION * kelly_perc
         if stake_calcolato > config.STAKE_MASSIMO: stake_calcolato = config.STAKE_MASSIMO
+        
+        # FIX: Se lo stake è calcolato ma è sotto il minimo, restituiamo comunque il valore grezzo 
+        # (se serve per info) oppure 0 se vogliamo essere rigidi. 
+        # Qui manteniamo il taglio a 0 per evitare errori API, ma nel report gestiamo la visualizzazione.
         if stake_calcolato < config.STAKE_MINIMO: stake_calcolato = 0
+        
         return int(stake_calcolato)
     except: return 0
 
@@ -90,7 +81,7 @@ def check_watchdog(event_name, current_pinnacle_odds, trade_row):
     except: pass
 
 def scan_calcio():
-    print(f"--- ⚽ SCANSIONE CALCIO (V10 BUNKER) - {datetime.now()} ---")
+    print(f"--- ⚽ SCANSIONE CALCIO (V11 SMART STAKE) - {datetime.now()} ---")
     
     header = ['Sport', 'Data_Scan', 'Orario_Match', 'Torneo', 'Match', 'Selezione', 'Bookmaker', 'Quota_Ingresso', 'Pinnacle_Iniziale', 'Target_Scalping', 'Quota_Sniper_Target', 'Valore_%', 'Stake_Euro', 'Stato_Trade', 'Esito_Finale', 'Profitto_Reale']
     
@@ -107,23 +98,7 @@ def scan_calcio():
         resp = requests.get('https://api.the-odds-api.com/v4/sports', params={'apiKey': API_KEY})
         if resp.status_code != 200: return
         
-        # --- FILTRO VISIVO ---
-        soccer_leagues = []
-        campionati_scartati = 0
-        
-        print("🔍 VERIFICA FILTRI COMPETIZIONI:")
-        for s in resp.json():
-            # Controlla se è calcio MA non è nella lista Elite
-            if 'soccer' in s['key']:
-                if s['key'] in COMPETIZIONI_ELITE:
-                    soccer_leagues.append(s)
-                    # print(f"   ✅ ACCETTATO: {s['title']}") # Decommenta per lista completa
-                else:
-                    campionati_scartati += 1
-                    # print(f"   🚫 IGNORATO: {s['title']}") # Decommenta per vedere cosa scarta
-        
-        print(f"📊 REPORT FILTRI: {len(soccer_leagues)} campionati accettati | {campionati_scartati} campionati minori/esotici scartati.")
-
+        soccer_leagues = [s for s in resp.json() if s['key'] in COMPETIZIONI_ELITE]
         match_analizzati = 0
         now_utc = datetime.now(timezone.utc)
 
@@ -150,10 +125,11 @@ def scan_calcio():
                             if m['key']=='h2h':
                                 for o in m['outcomes']: pinna_odds[o['name']] = o['price']
                 
-                if len(pinna_odds) >= 2:
-                     for trade in open_trades:
-                        if trade['Match'] == match_name: check_watchdog(match_name, pinna_odds, trade)
-                else: continue
+                if len(pinna_odds) < 2: continue
+
+                # Watchdog
+                for trade in open_trades:
+                    if trade['Match'] == match_name: check_watchdog(match_name, pinna_odds, trade)
 
                 try:
                     inv_h = 1/pinna_odds[home]
@@ -173,7 +149,6 @@ def scan_calcio():
                                     
                                     soft_price = outcome['price']
                                     sel_name = outcome['name']
-                                    
                                     if soft_price > MAX_ODDS_CAP: continue
 
                                     net_price = 1 + ((soft_price - 1) * (1 - config.COMMISSIONE_BETFAIR))
@@ -192,26 +167,36 @@ def scan_calcio():
                                         q_scalp = 0
                                         quota_reale_pinna = round(1/real_prob[sel_name], 2)
                                         
+                                        # --- LOGICA INTELLIGENTE STAKE ---
                                         if status == "VALUE":
+                                            # Se è VALUE, calcola stake sulla situazione ATTUALE
                                             stake_euro = calcola_stake(ev_perc, soft_price)
                                             q_scalp = calcola_target_scalping(soft_price)
                                         else:
-                                            quota_sniper = calcola_quota_target(real_prob[sel_name])
-                                            stake_euro = calcola_stake(ev_perc, quota_sniper)
-                                            q_scalp = calcola_target_scalping(soft_price)
+                                            # Se è ATTESA, calcola stake sulla situazione FUTURA (Target)
+                                            # Simuliamo un EV del 2% (che è il nostro target standard)
+                                            quota_sniper = calcola_quota_target(real_prob[sel_name], roi=0.02)
+                                            stake_euro = calcola_stake(2.0, quota_sniper) 
+                                            q_scalp = calcola_target_scalping(soft_price) # Scalp sempre sull'ingresso
 
                                         with open(config.FILE_PENDING, 'a', newline='', encoding='utf-8') as f:
                                             csv.writer(f).writerow(['CALCIO', datetime.now().strftime("%Y-%m-%d %H:%M"), converti_orario(event.get('commence_time', 'N/A')), league['title'], match_name, sel_name, b['title'], soft_price, quota_reale_pinna, q_scalp, quota_sniper, f"{status} {ev_perc}%", stake_euro, 'APERTO', '', ''])
                                         
                                         emoji = "🟢" if status == "VALUE" else "🟡"
                                         
+                                        if status == "VALUE":
+                                            msg_stake = f"💰 STAKE: {stake_euro}€"
+                                        else:
+                                            # Messaggio specifico per l'attesa
+                                            msg_stake = f"👀 STAKE POTENZIALE: {stake_euro}€\n(Se raggiungi Quota Ideale)"
+
                                         msg = (
                                             f"{emoji} CALCIO ELITE: {sel_name}\n"
                                             f"⚽ {match_name}\n"
                                             f"🏆 {league['title']}\n"
                                             f"🔹 QUOTA ORA: {soft_price}\n"
-                                            f"📈 EV: {ev_perc}%\n"
-                                            f"💰 STAKE: {stake_euro}€\n"
+                                            f"📈 EV ATTUALE: {ev_perc}%\n"
+                                            f"{msg_stake}\n"
                                             f"🎯 TARGET SCALP: {q_scalp}"
                                         )
                                         if status == "ATTESA":
