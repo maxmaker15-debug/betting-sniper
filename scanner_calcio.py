@@ -7,8 +7,7 @@ API_KEY = config.API_KEY
 TELEGRAM_TOKEN = "8145327630:AAHJC6vDjvGUyPT0pKw63fyW53hTl_F873U"
 TELEGRAM_CHAT_ID = "5562163433"
 
-# --- WHITELIST COMPETIZIONI (Solo il meglio) ---
-# Se il campionato non è qui dentro, viene ignorato.
+# --- WHITELIST COMPETIZIONI ELITE ---
 COMPETIZIONI_ELITE = [
     'soccer_italy_serie_a', 'soccer_italy_serie_b',
     'soccer_england_premier_league', 'soccer_england_championship',
@@ -76,7 +75,7 @@ def check_watchdog(event_name, current_pinnacle_odds, trade_row):
     except: pass
 
 def scan_calcio():
-    print(f"--- ⚽ SCANSIONE CALCIO (V8 ELITE) - {datetime.now()} ---")
+    print(f"--- ⚽ SCANSIONE CALCIO (V9 FULL INFO) - {datetime.now()} ---")
     
     header = ['Sport', 'Data_Scan', 'Orario_Match', 'Torneo', 'Match', 'Selezione', 'Bookmaker', 'Quota_Ingresso', 'Pinnacle_Iniziale', 'Target_Scalping', 'Quota_Sniper_Target', 'Valore_%', 'Stake_Euro', 'Stato_Trade', 'Esito_Finale', 'Profitto_Reale']
     
@@ -99,8 +98,6 @@ def scan_calcio():
             if s['key'] in COMPETIZIONI_ELITE:
                 soccer_leagues.append(s)
         
-        print(f"🏆 Competizioni Elite Trovate: {len(soccer_leagues)}")
-
         match_analizzati = 0
         now_utc = datetime.now(timezone.utc)
 
@@ -169,25 +166,31 @@ def scan_calcio():
                                         q_scalp = 0
                                         quota_reale_pinna = round(1/real_prob[sel_name], 2)
                                         
+                                        # Calcolo Stake e Target sempre
                                         if status == "VALUE":
                                             stake_euro = calcola_stake(ev_perc, soft_price)
                                             q_scalp = calcola_target_scalping(soft_price)
                                         else:
+                                            # Per i gialli, calcoliamo i target ideali
                                             quota_sniper = calcola_quota_target(real_prob[sel_name])
-                                            stake_euro = calcola_stake(ev_perc, quota_sniper)
-                                            q_scalp = calcola_target_scalping(quota_sniper)
+                                            stake_euro = calcola_stake(ev_perc, quota_sniper) # Stake ipotetico sul target
+                                            q_scalp = calcola_target_scalping(soft_price) # Scalp basato sull'ingresso attuale
 
                                         with open(config.FILE_PENDING, 'a', newline='', encoding='utf-8') as f:
                                             csv.writer(f).writerow(['CALCIO', datetime.now().strftime("%Y-%m-%d %H:%M"), converti_orario(event.get('commence_time', 'N/A')), league['title'], match_name, sel_name, b['title'], soft_price, quota_reale_pinna, q_scalp, quota_sniper, f"{status} {ev_perc}%", stake_euro, 'APERTO', '', ''])
                                         
+                                        # COSTRUZIONE MESSAGGIO COMPLETO
                                         emoji = "🟢" if status == "VALUE" else "🟡"
-                                        msg_stake = f"💰 STAKE: {stake_euro}€" if status == "VALUE" else f"👀 MONITORARE (Target: {quota_sniper})"
                                         
-                                        msg = f"{emoji} CALCIO ELITE: {sel_name}\n⚽ {match_name}\n🏆 {league['title']}\n🔹 ORA: {soft_price}\n📈 EV: {ev_perc}%\n{msg_stake}"
-                                        send_telegram(msg)
-
-    except Exception as e: print(f"Errore Calcio: {e}")
-    print("--- SCANSIONE ELITE COMPLETATA ---")
-
-if __name__ == "__main__":
-    scan_calcio()
+                                        msg = (
+                                            f"{emoji} CALCIO ELITE: {sel_name}\n"
+                                            f"⚽ {match_name}\n"
+                                            f"🏆 {league['title']}\n"
+                                            f"🔹 QUOTA ORA: {soft_price}\n"
+                                            f"📈 EV: {ev_perc}%\n"
+                                            f"💰 STAKE: {stake_euro}€\n"
+                                            f"🎯 TARGET SCALP: {q_scalp}"
+                                        )
+                                        
+                                        if status == "ATTESA":
+                                            msg += f"\n⏳ QUOTA IDEALE: {quota_sniper}"
