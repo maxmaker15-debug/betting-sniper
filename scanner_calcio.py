@@ -34,89 +34,67 @@ def converti_orario(iso_date):
     except: return iso_date
 
 def calcola_target_scalping(quota_ingresso):
-    # Target Scalping: Uscita rapida (es. 1.5% di movimento quota)
     target = quota_ingresso - (quota_ingresso * 0.015) 
     if target < 1.01: target = 1.01
     return round(target, 2)
 
 def calcola_quota_target_teorica(prob_reale):
-    # Calcola dove DOVREBBE essere la quota (Fair Value)
     try: return round(1/prob_reale, 2)
     except: return 0
 
-# --- 🧠 IL CUORE DEL SISTEMA IBRIDO ---
 def calcola_stake_ibrido(ev_perc, quota, status):
     try:
         if quota <= 1: return 0
         
-        # 1. Calcolo Kelly Standard (Base Matematica)
-        # Formula: (bp - q) / b
-        # b = quota - 1
-        # p = probabilità stimata (inclusa EV) = (1 + EV%/100) / quota
         b = quota - 1
         p = (1 + (ev_perc / 100)) / quota
         q = 1 - p
-        
         if b == 0: return 0
         kelly_fraction = (b * p - q) / b
-        
-        # Stake base secondo Kelly puro
         stake_base = config.BANKROLL_TOTALE * config.KELLY_FRACTION * kelly_fraction
         
-        # 2. LOGICA IBRIDA "VOLUME BOOST"
         stake_finale = 0
         
         if status == "VALUE":
-            # Per le Value Bet (Verdi), ci fidiamo di Kelly ma garantiamo un minimo di sostanza
             stake_finale = stake_base
-            # Se Kelly è troppo timido su una Value Bet, forziamo almeno il 20% dello stake massimo
-            min_floor = config.STAKE_MASSIMO * 0.2
+            min_floor = config.STAKE_MASSIMO * 0.3
             if stake_finale < min_floor: stake_finale = min_floor
 
         elif status == "ATTESA":
-            # Per lo Scalping (Gialli), il rischio temporale è basso, quindi ALZIAMO IL VOLUME.
-            # Moltiplichiamo il suggerimento di Kelly x4 (Leva Scalping)
-            stake_finale = stake_base * 4.0
-            
-            # SCALPING FLOOR: Non ha senso scalpare con meno di 10€ (commissioni e fatica)
-            # Se lo stake calcolato è basso, forziamo un ingresso "tattico"
-            # Usiamo il 40% dello Stake Massimo come base minima per lo scalping
-            scalp_floor = config.STAKE_MASSIMO * 0.4 
+            stake_finale = stake_base * 8.0
+            scalp_floor = config.STAKE_MASSIMO * 0.65 
             if stake_finale < scalp_floor: stake_finale = scalp_floor
 
-        # 3. SICUREZZA ASSOLUTA (Hard Cap)
-        # Non superiamo mai lo Stake Massimo impostato nel config, qualunque cosa dica il boost
         if stake_finale > config.STAKE_MASSIMO: stake_finale = config.STAKE_MASSIMO
-        
-        # Filtro spiccioli (sotto i 2 euro non ci muoviamo)
-        if stake_finale < 2: stake_finale = 0
+        if stake_finale < config.STAKE_MINIMO: stake_finale = 0
         
         return int(stake_finale)
 
-    except Exception as e:
-        return 0
+    except Exception as e: return 0
 
 def check_watchdog(event_name, current_pinnacle_odds, trade_row):
     try:
         ingresso_betfair = float(trade_row['Quota_Ingresso'])
         sel = trade_row['Selezione']
-        
         quota_pinna_now = 0
-        if sel in current_pinnacle_odds:
-            quota_pinna_now = current_pinnacle_odds[sel]
+        if sel in current_pinnacle_odds: quota_pinna_now = current_pinnacle_odds[sel]
         else:
             if 'Home' in str(sel) or trade_row['Match'].split(' vs ')[0] in str(sel): quota_pinna_now = current_pinnacle_odds.get('Home', 0)
             elif 'Away' in str(sel) or trade_row['Match'].split(' vs ')[1] in str(sel): quota_pinna_now = current_pinnacle_odds.get('Away', 0)
 
-        if quota_pinna_now > 0:
-            if quota_pinna_now >= ingresso_betfair:
-                msg = f"🔴 ALLARME STOP LOSS: {event_name}\nLa quota Pinnacle ({quota_pinna_now}) ha superato il tuo ingresso ({ingresso_betfair})!\nChiudi subito."
-                send_telegram(msg)
+        if quota_pinna_now > 0 and quota_pinna_now >= ingresso_betfair:
+            msg = f"🔴 ALLARME STOP LOSS: {event_name}\nLa quota Pinnacle ({quota_pinna_now}) ha superato il tuo ingresso ({ingresso_betfair})!\nChiudi subito."
+            send_telegram(msg)
     except: pass
 
 def scan_calcio():
-    print(f"--- ⚽ SCANSIONE CALCIO (V13 HYBRID KELLY) - {datetime.now()} ---")
-    
+    print(f"\n--- 🏎️ SCANSIONE CALCIO (FERRARI VERIFIED) - {datetime.now()} ---")
+    print(f"⚙️ CHECK CONFIGURAZIONE:")
+    try:
+        print(f"   ▶ STAKE MASSIMO LETTO: {config.STAKE_MASSIMO}€")
+    except:
+        print("   ⚠️ Errore lettura config!")
+
     header = ['Sport', 'Data_Scan', 'Orario_Match', 'Torneo', 'Match', 'Selezione', 'Bookmaker', 'Quota_Ingresso', 'Pinnacle_Iniziale', 'Target_Scalping', 'Quota_Sniper_Target', 'Valore_%', 'Stake_Euro', 'Stato_Trade', 'Esito_Finale', 'Profitto_Reale']
     
     open_trades = []
@@ -161,7 +139,6 @@ def scan_calcio():
                 
                 if len(pinna_odds) < 2: continue
 
-                # Watchdog
                 for trade in open_trades:
                     if trade['Match'] == match_name: check_watchdog(match_name, pinna_odds, trade)
 
@@ -195,32 +172,24 @@ def scan_calcio():
 
                                     if status:
                                         print(f"🔥 OCCASIONE CALCIO ELITE: {match_name} ({status})")
-                                        
-                                        # --- CALCOLO IBRIDO ---
                                         stake_euro = calcola_stake_ibrido(ev_perc, soft_price, status)
                                         q_scalp = calcola_target_scalping(soft_price)
                                         quota_teorica = calcola_quota_target_teorica(real_prob[sel_name])
                                         
-                                        # Salvataggio
                                         with open(config.FILE_PENDING, 'a', newline='', encoding='utf-8') as f:
                                             csv.writer(f).writerow(['CALCIO', datetime.now().strftime("%Y-%m-%d %H:%M"), converti_orario(event.get('commence_time', 'N/A')), league['title'], match_name, sel_name, b['title'], soft_price, quota_teorica, q_scalp, 0, f"{status} {ev_perc}%", stake_euro, 'APERTO', '', ''])
                                         
                                         emoji = "🟢" if status == "VALUE" else "🟡"
-                                        
-                                        # Messaggio Telegram
                                         msg = (
                                             f"{emoji} CALCIO ELITE: {sel_name}\n"
                                             f"⚽ {match_name}\n"
                                             f"🏆 {league['title']}\n"
                                             f"🔹 INGRESSO: {soft_price}\n"
                                             f"📈 EV: {ev_perc}%\n"
-                                            f"💰 STAKE HYBRID: {stake_euro}€\n"
+                                            f"💰 STAKE FERRARI: {stake_euro}€\n"
                                             f"🏃 USCITA (Scalp): {q_scalp}"
                                         )
-                                        
-                                        if status == "ATTESA":
-                                            msg += f"\n⚖️ FAIR VALUE: {quota_teorica}"
-                                        
+                                        if status == "ATTESA": msg += f"\n⚖️ FAIR VALUE: {quota_teorica}"
                                         send_telegram(msg)
 
     except Exception as e: print(f"Errore Calcio: {e}")
