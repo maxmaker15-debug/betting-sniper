@@ -6,25 +6,21 @@ FILE_PENDING = "pending_trades.csv"
 FILE_STORICO = "storico_trades.csv"
 
 # --- GESTIONE BANKROLL ---
-BANKROLL_TOTALE = 1000      # Il tuo capitale totale
-KELLY_FRACTION = 1.0        # 1.0 = Aggressivo, 0.5 = Conservativo
+BANKROLL_TOTALE = 1000      # Capitale Totale
+KELLY_FRACTION = 1.0        # Aggressività Standard
 
 # Limiti di Sicurezza Stake
-STAKE_MASSIMO = 50          # Tetto massimo per singola bet
-STAKE_MINIMO = 2            # Sotto questa cifra non scommette
+STAKE_MASSIMO = 150         # ⬆️ ALZATO A 150€ (Il tuo nuovo tetto)
+STAKE_MINIMO = 5            # Alziamo anche il minimo per ignorare le briciole
 
 # Parametri Piattaforma
 COMMISSIONE_BETFAIR = 0.05  # 5%
 
-# --- PARAMETRI TATTICI (Soglie di Allerta) ---
+# --- PARAMETRI TATTICI ---
+# CALCIO ELITE
+SOGLIA_VALUE_CALCIO = 3.0   # Verde (>3%)
+SOGLIA_SNIPER_CALCIO = 0.1  # Giallo (>0.1%)
 
-# CALCIO (Modalità Elite)
-# VALUE (Verde): Solo occasioni matematiche forti (>3%) per lo stake automatico.
-# SNIPER (Giallo): Radar impostato a 0.1%. Ti avvisa di QUALSIASI vantaggio matematico sui top campionati.
-SOGLIA_VALUE_CALCIO = 3.0
-SOGLIA_SNIPER_CALCIO = 0.1
-
-# TENNIS (Modalità Standard)
-# In attesa dei tornei big, manteniamo soglie bilanciate.
+# TENNIS
 SOGLIA_VALUE_TENNIS = 2.0
 SOGLIA_SNIPER_TENNIS = 0.5
