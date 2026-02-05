@@ -42,33 +42,42 @@ def calcola_quota_target_teorica(prob_reale):
     try: return round(1/prob_reale, 2)
     except: return 0
 
-def calcola_stake_ibrido(ev_perc, quota, status):
+# --- 🧠 MOTORE V17: RAMPA MODULARE ---
+def calcola_stake_modulare(ev_perc, quota, status):
     try:
         if quota <= 1: return 0
-        
-        b = quota - 1
-        p = (1 + (ev_perc / 100)) / quota
-        q = 1 - p
-        if b == 0: return 0
-        kelly_fraction = (b * p - q) / b
-        stake_base = config.BANKROLL_TOTALE * config.KELLY_FRACTION * kelly_fraction
-        
         stake_finale = 0
-        
+
+        # Base di partenza per i Gialli (definito da te)
+        STAKE_BASE_GIALLO = 50 
+
         if status == "VALUE":
-            stake_finale = stake_base
-            min_floor = config.STAKE_MASSIMO * 0.3
-            if stake_finale < min_floor: stake_finale = min_floor
+            # --- VERDE: MAX POWER ---
+            stake_finale = config.STAKE_MASSIMO # 150€
 
         elif status == "ATTESA":
-            stake_finale = stake_base * 8.0
-            scalp_floor = config.STAKE_MASSIMO * 0.65 
-            if stake_finale < scalp_floor: stake_finale = scalp_floor
+            # --- GIALLO: SCALATA MODULARE ---
+            # Calcoliamo la "forza" del segnale tra 0 (minimo giallo) e 1 (quasi verde)
+            # Range EV: da 0.1 a 3.0
+            range_ev = config.SOGLIA_VALUE_CALCIO - config.SOGLIA_SNIPER_CALCIO
+            delta_ev = ev_perc - config.SOGLIA_SNIPER_CALCIO
+            
+            if range_ev > 0:
+                fattore_potenza = delta_ev / range_ev # Risultato tra 0.0 e 1.0
+            else:
+                fattore_potenza = 0
 
+            # Calcoliamo lo stake: Parte da 50€ e aggiunge una fetta della differenza fino a 150€
+            # Differenza da coprire = 150 - 50 = 100€
+            range_stake = config.STAKE_MASSIMO - STAKE_BASE_GIALLO
+            stake_finale = STAKE_BASE_GIALLO + (range_stake * fattore_potenza)
+
+        # Arrotondamento e Sicurezza
+        stake_finale = int(stake_finale)
         if stake_finale > config.STAKE_MASSIMO: stake_finale = config.STAKE_MASSIMO
         if stake_finale < config.STAKE_MINIMO: stake_finale = 0
         
-        return int(stake_finale)
+        return stake_finale
 
     except Exception as e: return 0
 
@@ -88,12 +97,12 @@ def check_watchdog(event_name, current_pinnacle_odds, trade_row):
     except: pass
 
 def scan_calcio():
-    print(f"\n--- 🏎️ SCANSIONE CALCIO (FERRARI VERIFIED) - {datetime.now()} ---")
-    print(f"⚙️ CHECK CONFIGURAZIONE:")
+    print(f"\n--- 🏎️ SCANSIONE CALCIO (V17 MODULAR) - {datetime.now()} ---")
+    print(f"⚙️ PARAMETRI DINAMICI:")
     try:
-        print(f"   ▶ STAKE MASSIMO LETTO: {config.STAKE_MASSIMO}€")
-    except:
-        print("   ⚠️ Errore lettura config!")
+        print(f"   ▶ STAKE VERDE: {config.STAKE_MASSIMO}€ (Fisso)")
+        print(f"   ▶ STAKE GIALLO: Modulare da 50€ a {config.STAKE_MASSIMO}€")
+    except: pass
 
     header = ['Sport', 'Data_Scan', 'Orario_Match', 'Torneo', 'Match', 'Selezione', 'Bookmaker', 'Quota_Ingresso', 'Pinnacle_Iniziale', 'Target_Scalping', 'Quota_Sniper_Target', 'Valore_%', 'Stake_Euro', 'Stato_Trade', 'Esito_Finale', 'Profitto_Reale']
     
@@ -172,7 +181,9 @@ def scan_calcio():
 
                                     if status:
                                         print(f"🔥 OCCASIONE CALCIO ELITE: {match_name} ({status})")
-                                        stake_euro = calcola_stake_ibrido(ev_perc, soft_price, status)
+                                        
+                                        # Calcolo Modulare
+                                        stake_euro = calcola_stake_modulare(ev_perc, soft_price, status)
                                         q_scalp = calcola_target_scalping(soft_price)
                                         quota_teorica = calcola_quota_target_teorica(real_prob[sel_name])
                                         
@@ -180,13 +191,17 @@ def scan_calcio():
                                             csv.writer(f).writerow(['CALCIO', datetime.now().strftime("%Y-%m-%d %H:%M"), converti_orario(event.get('commence_time', 'N/A')), league['title'], match_name, sel_name, b['title'], soft_price, quota_teorica, q_scalp, 0, f"{status} {ev_perc}%", stake_euro, 'APERTO', '', ''])
                                         
                                         emoji = "🟢" if status == "VALUE" else "🟡"
+                                        
+                                        # Info extra per te nel messaggio
+                                        tipo_stake = "MAX" if status == "VALUE" else "MODULARE"
+                                        
                                         msg = (
                                             f"{emoji} CALCIO ELITE: {sel_name}\n"
                                             f"⚽ {match_name}\n"
                                             f"🏆 {league['title']}\n"
                                             f"🔹 INGRESSO: {soft_price}\n"
                                             f"📈 EV: {ev_perc}%\n"
-                                            f"💰 STAKE FERRARI: {stake_euro}€\n"
+                                            f"💰 STAKE: {stake_euro}€ ({tipo_stake})\n"
                                             f"🏃 USCITA (Scalp): {q_scalp}"
                                         )
                                         if status == "ATTESA": msg += f"\n⚖️ FAIR VALUE: {quota_teorica}"
