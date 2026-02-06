@@ -20,37 +20,29 @@ st.markdown("""
     <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
     
     <style>
-        /* FONTS & BACKGROUND */
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
         
         .stApp {
-            background-color: #050505; /* Nero Profondo */
+            background-color: #050505;
             font-family: 'Inter', sans-serif;
         }
 
-        /* CARD SEMI-TRASPARENTI (Glassmorphism 2.0) */
-        .css-1r6slb0, .stDataFrame, .stPlotlyChart {
-            background: rgba(20, 20, 20, 0.7);
-            backdrop-filter: blur(10px);
+        /* CARD STYLE FIX - Rende visibili i contenitori */
+        div[data-testid="stMetric"], div[data-testid="stDataFrame"], div[data-testid="stPlotlyChart"] {
+            background-color: #111;
             border: 1px solid #333;
             border-radius: 12px;
-            padding: 20px;
+            padding: 15px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
         }
 
-        /* TITOLI CON ICONE */
-        h1, h2, h3 { 
-            color: #ffffff; 
-            font-weight: 800; 
-            letter-spacing: -1px;
-        }
+        /* TITOLI */
+        h1, h2, h3 { color: #ffffff; font-weight: 800; letter-spacing: -1px; }
         
-        /* ICONE REMIX */
-        i { vertical-align: middle; margin-right: 8px; }
-
-        /* METRICHE (NUMERI GIGANTI E PULITI) */
+        /* METRICHE */
         div[data-testid="stMetricValue"] {
             font-size: 2.4rem !important;
-            color: #00E096 !important; /* Verde Neon Moderno */
+            color: #00E096 !important;
             font-weight: 800;
             text-shadow: 0 0 20px rgba(0, 224, 150, 0.3);
         }
@@ -63,23 +55,6 @@ st.markdown("""
 
         /* SIDEBAR */
         section[data-testid="stSidebar"] { background-color: #0a0a0a; border-right: 1px solid #222; }
-        
-        /* PULSANTI FUTURISTICI */
-        .stButton button {
-            background-color: #222;
-            color: white;
-            border: 1px solid #444;
-            border-radius: 8px;
-            text-transform: uppercase;
-            font-size: 0.8rem;
-            letter-spacing: 1px;
-            transition: all 0.3s ease;
-        }
-        .stButton button:hover {
-            border-color: #00E096;
-            color: #00E096;
-            box-shadow: 0 0 15px rgba(0, 224, 150, 0.2);
-        }
         
         /* HEADER LOGO */
         .header-logo {
@@ -105,20 +80,16 @@ def save_data(df, filename):
 
 def run_scanner():
     log_scan = []
-    # 1. SCANSIONE CALCIO
     if os.path.exists("scanner_calcio.py"):
         try:
             subprocess.run([sys.executable, "scanner_calcio.py"], check=True)
             log_scan.append("Calcio: OK")
         except Exception as e: log_scan.append(f"Calcio: Error")
-    
-    # 2. SCANSIONE TENNIS
     if os.path.exists("scanner_tennis.py"):
         try:
             subprocess.run([sys.executable, "scanner_tennis.py"], check=True)
             log_scan.append("Tennis: OK")
         except Exception as e: log_scan.append(f"Tennis: Error")
-            
     return log_scan
 
 # --- CARICAMENTO DATI ---
@@ -149,19 +120,11 @@ if not df_storico.empty:
 saldo_attuale = saldo_iniziale + profitto_totale
 
 # ==============================================================================
-# SIDEBAR NAVIGATION
+# SIDEBAR
 # ==============================================================================
 with st.sidebar:
-    # Logo HTML personalizzato
     st.markdown('<div class="header-logo"><i class="ri-focus-3-line highlight"></i> SNIPER<span class="highlight">ELITE</span></div>', unsafe_allow_html=True)
-    
-    # Menu con simboli geometrici minimali (no emoji cartoon)
-    menu = st.radio(
-        "SISTEMA DI NAVIGAZIONE",
-        ["◈ DASHBOARD", "◎ RADAR OPERATIVO", "▤ REGISTRO"],
-        label_visibility="collapsed"
-    )
-    
+    menu = st.radio("SISTEMA DI NAVIGAZIONE", ["◈ DASHBOARD", "◎ RADAR OPERATIVO", "▤ REGISTRO"], label_visibility="collapsed")
     st.markdown("---")
     st.markdown(f"**CAPITALE:** <span style='color:white'>{config.BANKROLL_TOTALE}€</span>", unsafe_allow_html=True)
     st.markdown(f"**LIMIT:** <span style='color:white'>{config.STAKE_MASSIMO}€</span>", unsafe_allow_html=True)
@@ -174,10 +137,9 @@ with st.sidebar:
 if menu == "◈ DASHBOARD":
     st.markdown('<h1><i class="ri-dashboard-line"></i> FINANCIAL HUB</h1>', unsafe_allow_html=True)
     st.caption("Real-time Performance Analytics")
-    
     st.markdown("<br>", unsafe_allow_html=True)
     
-    # RIGA 1: KPI PRINCIPALI
+    # KPI RIGA 1
     k1, k2, k3, k4 = st.columns(4)
     k1.metric("CURRENT BANKROLL", f"{saldo_attuale:.2f} €", delta=f"{profitto_totale:.2f} €")
     k2.metric("NET PROFIT", f"{profitto_totale:.2f} €")
@@ -186,7 +148,7 @@ if menu == "◈ DASHBOARD":
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # RIGA 2: EFFICIENZA
+    # KPI RIGA 2
     e1, e2, e3, e4 = st.columns(4)
     e1.metric("VELOCITY", f"{rotazione_capitale:.2f}x")
     e2.metric("TOTAL VOLUME", f"{volume_giocato:.0f} €")
@@ -195,35 +157,51 @@ if menu == "◈ DASHBOARD":
 
     st.markdown("---")
 
-    # GRAFICI
-    if not df_storico.empty:
-        c1, c2 = st.columns([2, 1])
-        with c1:
-            st.markdown('<h3><i class="ri-line-chart-line"></i> EQUITY CURVE</h3>', unsafe_allow_html=True)
+    # GRAFICI (GESTIONE VUOTO/PIENO)
+    c1, c2 = st.columns([2, 1])
+    
+    with c1:
+        st.markdown('<h3><i class="ri-line-chart-line"></i> EQUITY CURVE</h3>', unsafe_allow_html=True)
+        if not df_storico.empty:
             df_chart = df_storico.copy()
             df_chart['Progressivo'] = saldo_iniziale + df_chart['Profitto_Reale'].cumsum()
             df_chart['Trade'] = range(1, len(df_chart) + 1)
             
             fig = px.area(df_chart, x='Trade', y='Progressivo')
+            # Fix colori grafici
             fig.update_traces(line_color='#00E096', fill_color='rgba(0, 224, 150, 0.1)')
-            fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color='white', margin=dict(t=20, l=0, r=0, b=0))
-            fig.add_hline(y=saldo_iniziale, line_dash="dot", line_color="#444")
+            fig.update_layout(
+                paper_bgcolor='rgba(0,0,0,0)', 
+                plot_bgcolor='rgba(0,0,0,0)', 
+                font_color='white',
+                xaxis=dict(showgrid=False),
+                yaxis=dict(showgrid=True, gridcolor='#333'),
+                margin=dict(t=20, l=0, r=0, b=0)
+            )
+            fig.add_hline(y=saldo_iniziale, line_dash="dot", line_color="#666")
             st.plotly_chart(fig, use_container_width=True)
-        
-        with c2:
-            st.markdown('<h3><i class="ri-pie-chart-line"></i> ASSETS</h3>', unsafe_allow_html=True)
-            if 'Sport' in df_chart.columns:
-                fig_pie = px.pie(df_chart, names='Sport', values='Stake_Euro', donut=0.6)
-                fig_pie.update_layout(paper_bgcolor='rgba(0,0,0,0)', font_color='white', showlegend=False, margin=dict(t=20, l=0, r=0, b=0))
-                fig_pie.update_traces(textposition='inside', textinfo='percent+label')
-                st.plotly_chart(fig_pie, use_container_width=True)
+        else:
+            st.info("📉 NESSUN DATO STORICO. Conferma un'operazione nel Radar per attivare il grafico.")
+    
+    with c2:
+        st.markdown('<h3><i class="ri-pie-chart-line"></i> ASSETS</h3>', unsafe_allow_html=True)
+        if not df_storico.empty and 'Sport' in df_storico.columns:
+            fig_pie = px.pie(df_storico, names='Sport', values='Stake_Euro', donut=0.6)
+            fig_pie.update_layout(
+                paper_bgcolor='rgba(0,0,0,0)', 
+                font_color='white', 
+                showlegend=False,
+                margin=dict(t=20, l=0, r=0, b=0)
+            )
+            fig_pie.update_traces(textposition='inside', textinfo='percent+label')
+            st.plotly_chart(fig_pie, use_container_width=True)
+        else:
+            st.info("🍰 In attesa di dati.")
 
 # ==============================================================================
 # PAGINA 2: RADAR
 # ==============================================================================
 elif menu == "◎ RADAR OPERATIVO":
-    
-    # Header con Bottone Scansione Integrato
     c_head, c_btn = st.columns([3, 1])
     with c_head:
         st.markdown('<h1><i class="ri-radar-line"></i> LIVE RADAR</h1>', unsafe_allow_html=True)
@@ -256,8 +234,8 @@ elif menu == "◎ RADAR OPERATIVO":
             num_rows="dynamic"
         )
 
-        col1, col2 = st.columns([1, 4])
-        with col1:
+        c1, c2 = st.columns([1, 4])
+        with c1:
             if st.button("EXECUTE TRADE"):
                 to_move = edited_df[edited_df["Abbinata"] == True].copy()
                 if not to_move.empty:
@@ -271,7 +249,7 @@ elif menu == "◎ RADAR OPERATIVO":
                     cols_p = [c for c in remain.columns if c not in ["Abbinata", "Quota_Reale_Presa"]]
                     save_data(remain[cols_p], config.FILE_PENDING)
                     st.rerun()
-        with col2:
+        with c2:
             if st.button("CLEAR RADAR"):
                 cols_c = [c for c in df_pending.columns if c not in ["Abbinata", "Quota_Reale_Presa"]]
                 save_data(pd.DataFrame(columns=cols_c), config.FILE_PENDING)
@@ -288,7 +266,7 @@ elif menu == "▤ REGISTRO":
         st.dataframe(df_storico, use_container_width=True, hide_index=True)
         csv = df_storico.to_csv(index=False).encode('utf-8')
         st.download_button("DOWNLOAD CSV", csv, "sniper_log.csv", "text/csv")
-        if st.button("FACTORY RESET (DATA WIPE)"):
+        if st.button("FACTORY RESET"):
             save_data(pd.DataFrame(columns=df_storico.columns), config.FILE_STORICO)
             st.rerun()
     else:
