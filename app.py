@@ -15,7 +15,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- CSS "SHARP & COMPACT" (2026 PRO STYLE) ---
+# --- CSS 2026 (LAYOUT CORRETTO) ---
 st.markdown("""
     <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
     
@@ -23,32 +23,39 @@ st.markdown("""
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap');
         
         .stApp {
-            background-color: #080808; /* Nero Profondo */
+            background-color: #080808;
             font-family: 'Inter', sans-serif;
         }
 
-        /* CARD COMPATTE E PROFILATE */
+        /* --- FIX IMPAGINAZIONE --- */
+        /* Aumentiamo il padding superiore per evitare che i titoli vengano tagliati */
+        .block-container {
+            padding-top: 3.5rem !important; 
+            padding-bottom: 3rem !important;
+            padding-left: 2rem !important;
+            padding-right: 2rem !important;
+        }
+
+        /* CARD COMPATTE */
         div[data-testid="stMetric"], div[data-testid="stDataFrame"], div[data-testid="stPlotlyChart"] {
-            background-color: #121212; /* Grigio Tech */
-            border: 1px solid #333; /* Bordo sottile */
-            border-radius: 6px; /* Angoli vivi */
-            padding: 12px 15px; /* Spaziatura compatta */
+            background-color: #121212;
+            border: 1px solid #333;
+            border-radius: 6px;
+            padding: 12px 15px;
             box-shadow: 0 2px 5px rgba(0,0,0,0.4);
             transition: border-color 0.3s ease;
         }
-        
-        /* Hover Effect */
         div[data-testid="stMetric"]:hover { border-color: #555; }
 
         /* TITOLI */
-        h1 { font-size: 1.8rem; font-weight: 700; color: #fff; letter-spacing: -0.5px; margin-bottom: 5px; }
-        h2 { font-size: 1.4rem; font-weight: 600; color: #eee; margin-bottom: 5px; }
+        h1 { font-size: 1.8rem; font-weight: 700; color: #fff; letter-spacing: -0.5px; margin-bottom: 10px; }
+        h2 { font-size: 1.4rem; font-weight: 600; color: #eee; margin-bottom: 10px; }
         h3 { font-size: 1.1rem; font-weight: 600; color: #ccc; margin-top: 0; display: flex; align-items: center; gap: 8px;}
         
-        /* METRICHE RAFFINATE */
+        /* METRICHE */
         div[data-testid="stMetricValue"] {
             font-size: 1.8rem !important;
-            color: #00E096 !important; /* Verde Neon */
+            color: #00E096 !important;
             font-weight: 700;
         }
         div[data-testid="stMetricLabel"] {
@@ -65,7 +72,7 @@ st.markdown("""
             border-right: 1px solid #222; 
         }
         
-        /* PULSANTI SLIM */
+        /* PULSANTI */
         .stButton button {
             background-color: #1a1a1a;
             color: #ddd;
@@ -74,14 +81,15 @@ st.markdown("""
             text-transform: uppercase;
             font-size: 0.75rem;
             font-weight: 600;
-            padding: 0.4rem 1rem;
+            padding: 0.5rem 1rem;
+            width: 100%;
         }
         .stButton button:hover {
             border-color: #00E096;
             color: #00E096;
         }
 
-        /* HEADER LOGO SIDEBAR */
+        /* HEADER LOGO */
         .header-logo {
             font-size: 1.2rem;
             font-weight: 800;
@@ -92,9 +100,6 @@ st.markdown("""
             letter-spacing: 1px;
         }
         .highlight { color: #00E096; }
-        
-        /* Rimozione spazi extra */
-        .block-container { padding-top: 1rem; padding-bottom: 2rem; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -108,15 +113,12 @@ def save_data(df, filename):
     df.to_csv(filename, index=False)
 
 def run_scanner():
-    """Esegue sequenzialmente gli scanner disponibili (Calcio e Tennis)"""
     log_scan = []
-    # 1. Calcio
     if os.path.exists("scanner_calcio.py"):
         try:
             subprocess.run([sys.executable, "scanner_calcio.py"], check=True)
             log_scan.append("Calcio: OK")
         except: log_scan.append("Calcio: Error")
-    # 2. Tennis
     if os.path.exists("scanner_tennis.py"):
         try:
             subprocess.run([sys.executable, "scanner_tennis.py"], check=True)
@@ -124,7 +126,7 @@ def run_scanner():
         except: log_scan.append("Tennis: Error")
     return log_scan
 
-# --- CARICAMENTO DATI ---
+# --- CARICAMENTO ---
 df_storico = load_data(config.FILE_STORICO)
 df_pending = load_data(config.FILE_PENDING)
 
@@ -138,14 +140,11 @@ rotazione = 0.0
 n_ops = 0
 
 if not df_storico.empty:
-    # Normalizzazione Colonne
     if 'Profitto_Reale' not in df_storico.columns: df_storico['Profitto_Reale'] = 0.0
     if 'Stake_Euro' not in df_storico.columns: df_storico['Stake_Euro'] = 0.0
-    
     profitto_totale = df_storico['Profitto_Reale'].sum()
     volume_giocato = df_storico['Stake_Euro'].sum()
     n_ops = len(df_storico)
-    
     if volume_giocato > 0: roi = (profitto_totale / volume_giocato) * 100
     if saldo_iniziale > 0: roe = (profitto_totale / saldo_iniziale) * 100
     if saldo_iniziale > 0: rotazione = volume_giocato / saldo_iniziale
@@ -157,11 +156,8 @@ saldo_attuale = saldo_iniziale + profitto_totale
 # ==============================================================================
 with st.sidebar:
     st.markdown('<div class="header-logo"><i class="ri-crosshair-2-line highlight"></i> SNIPER<span class="highlight">SUITE</span></div>', unsafe_allow_html=True)
-    
     menu = st.radio("MENU", ["◈ DASHBOARD", "◎ RADAR", "▤ REGISTRO"], label_visibility="collapsed")
-    
     st.markdown("---")
-    # Info compatte
     c1, c2 = st.columns(2)
     c1.metric("BANKROLL", f"{config.BANKROLL_TOTALE/1000:.0f}k")
     c2.metric("LIMIT", f"{config.STAKE_MASSIMO}€")
@@ -173,8 +169,9 @@ with st.sidebar:
 # ==============================================================================
 if menu == "◈ DASHBOARD":
     st.markdown('<h3><i class="ri-dashboard-3-line"></i> PERFORMANCE ANALYTICS</h3>', unsafe_allow_html=True)
+    st.write("") # Spaziatore
     
-    # RIGA 1: KPI COMPATTI
+    # RIGA 1
     k1, k2, k3, k4 = st.columns(4)
     k1.metric("BANKROLL", f"{saldo_attuale:.2f} €", delta=f"{profitto_totale:.2f} €")
     k2.metric("NET PROFIT", f"{profitto_totale:.2f} €")
@@ -183,7 +180,7 @@ if menu == "◈ DASHBOARD":
     
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # RIGA 2: EFFICIENZA
+    # RIGA 2
     e1, e2, e3, e4 = st.columns(4)
     e1.metric("VELOCITY", f"{rotazione:.2f}x")
     e2.metric("VOLUME", f"{volume_giocato:.0f} €")
@@ -192,9 +189,7 @@ if menu == "◈ DASHBOARD":
 
     st.markdown("---")
 
-    # GRAFICI PROFILATI
     c1, c2 = st.columns([2, 1])
-    
     with c1:
         st.markdown('<h3><i class="ri-line-chart-line"></i> TREND</h3>', unsafe_allow_html=True)
         if not df_storico.empty:
@@ -203,7 +198,7 @@ if menu == "◈ DASHBOARD":
             df_chart['Trade'] = range(1, len(df_chart) + 1)
             
             fig = px.area(df_chart, x='Trade', y='Progressivo')
-            fig.update_traces(line_color='#00E096', fill_color='rgba(0, 224, 150, 0.05)') # Fill leggero elegante
+            fig.update_traces(line_color='#00E096', fill_color='rgba(0, 224, 150, 0.05)')
             fig.update_layout(
                 paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color='white',
                 margin=dict(t=10, l=0, r=0, b=0), height=300,
@@ -230,16 +225,18 @@ if menu == "◈ DASHBOARD":
 # PAGINA 2: RADAR
 # ==============================================================================
 elif menu == "◎ RADAR":
-    h_col, b_col = st.columns([4, 1])
-    with h_col: st.markdown('<h3><i class="ri-radar-line"></i> MARKET SCANNER</h3>', unsafe_allow_html=True)
+    # Layout pulsante fixato
+    h_col, b_col = st.columns([5, 1.5]) # Più spazio al pulsante
+    with h_col: 
+        st.markdown('<h3><i class="ri-radar-line"></i> MARKET SCANNER</h3>', unsafe_allow_html=True)
     with b_col: 
-        if st.button("SCAN NOW"):
+        st.write("") # Spaziatore per allineare verticalmente
+        if st.button("SCAN NOW", use_container_width=True):
             with st.spinner("Scanning..."):
                 run_scanner()
                 st.rerun()
 
     if not df_pending.empty:
-        # Aggiunta colonne operative se mancano
         if "Abbinata" not in df_pending.columns: df_pending.insert(0, "Abbinata", False)
         if "Quota_Reale_Presa" not in df_pending.columns: df_pending["Quota_Reale_Presa"] = df_pending["Quota_Ingresso"]
 
@@ -261,23 +258,18 @@ elif menu == "◎ RADAR":
 
         c1, c2 = st.columns([1, 5])
         with c1:
-            if st.button("CONFIRM TRADE"):
+            if st.button("CONFIRM"):
                 to_move = edited_df[edited_df["Abbinata"] == True].copy()
                 if not to_move.empty:
-                    # Sposta nello storico
                     to_move["Quota_Ingresso"] = to_move["Quota_Reale_Presa"]
                     to_move["Esito_Finale"] = "APERTA"
                     to_move["Profitto_Reale"] = 0.0
-                    
                     df_final = pd.concat([df_storico, to_move], ignore_index=True)
                     cols_s = [c for c in df_final.columns if c not in ["Abbinata", "Quota_Reale_Presa"]]
                     save_data(df_final[cols_s], config.FILE_STORICO)
-                    
-                    # Rimuovi dal pending
                     remain = edited_df[edited_df["Abbinata"] == False]
                     cols_p = [c for c in remain.columns if c not in ["Abbinata", "Quota_Reale_Presa"]]
                     save_data(remain[cols_p], config.FILE_PENDING)
-                    
                     st.rerun()
         with c2:
             if st.button("CLEAR"):
@@ -296,7 +288,6 @@ elif menu == "▤ REGISTRO":
         st.dataframe(df_storico, use_container_width=True, hide_index=True)
         csv = df_storico.to_csv(index=False).encode('utf-8')
         st.download_button("DOWNLOAD CSV", csv, "sniper_log.csv", "text/csv")
-        
         if st.button("WIPE DATA"):
             save_data(pd.DataFrame(columns=df_storico.columns), config.FILE_STORICO)
             st.rerun()
