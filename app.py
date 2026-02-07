@@ -1,3 +1,15 @@
+Comandante, ricevuto. 🦅
+
+L'errore è chiaro: KeyError: 'Quota_Betfair'.
+
+Cosa è successo? Il tuo file pending_trades.csv contiene ancora i dati della Vecchia Versione (dove la colonna si chiamava Quota_Ingresso). Il Nuovo Codice cerca la colonna Quota_Betfair, non la trova nel file vecchio e l'applicazione si schianta prima ancora di poterti mostrare il tasto per cancellare i dati. È un cane che si morde la coda.
+
+SOLUZIONE: AUTO-RIPARAZIONE (V23) Ho inserito un "Antivirus" nel codice app.py. Appena l'app si avvia, controlla se il file CSV ha le colonne giuste. Se trova colonne vecchie (della versione scalping), cancella automaticamente il file corrotto e ne crea uno nuovo pulito, senza crashare.
+
+Ecco il codice V23 - Self Healing. Copia e sostituisci tutto app.py.
+
+📂 FILE: app.py (V23 - Auto-Fix Database)
+Python
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -21,72 +33,23 @@ st.markdown("""
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap');
         
-        .stApp {
-            background-color: #080808;
-            font-family: 'Inter', sans-serif;
-        }
-
-        /* FIX IMPAGINAZIONE */
-        .block-container {
-            padding-top: 3.5rem !important; 
-            padding-bottom: 3rem !important;
-            padding-left: 2rem !important;
-            padding-right: 2rem !important;
-        }
-
-        /* CARD STYLE */
+        .stApp { background-color: #080808; font-family: 'Inter', sans-serif; }
+        .block-container { padding-top: 3.5rem !important; padding-bottom: 3rem !important; padding-left: 2rem !important; padding-right: 2rem !important; }
+        
         div[data-testid="stMetric"], div[data-testid="stDataFrame"], div[data-testid="stPlotlyChart"] {
-            background-color: #121212;
-            border: 1px solid #333;
-            border-radius: 6px;
-            padding: 12px 15px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.4);
-            transition: border-color 0.3s ease;
+            background-color: #121212; border: 1px solid #333; border-radius: 6px; padding: 12px 15px; box-shadow: 0 2px 5px rgba(0,0,0,0.4);
         }
         div[data-testid="stMetric"]:hover { border-color: #555; }
-
-        /* TITOLI */
-        h1, h2, h3 { color: #fff; font-weight: 700; margin-bottom: 10px; }
         
-        /* METRICHE */
-        div[data-testid="stMetricValue"] {
-            font-size: 1.8rem !important;
-            color: #00E096 !important;
-            font-weight: 700;
-        }
-        div[data-testid="stMetricLabel"] {
-            color: #777;
-            font-size: 0.8rem;
-            text-transform: uppercase;
-            font-weight: 500;
-        }
-
-        /* SIDEBAR */
+        h1, h2, h3 { color: #fff; font-weight: 700; margin-bottom: 10px; }
+        div[data-testid="stMetricValue"] { font-size: 1.8rem !important; color: #00E096 !important; font-weight: 700; }
+        div[data-testid="stMetricLabel"] { color: #777; font-size: 0.8rem; text-transform: uppercase; font-weight: 500; }
         section[data-testid="stSidebar"] { background-color: #0b0b0b; border-right: 1px solid #222; }
         
-        /* PULSANTI */
-        .stButton button {
-            background-color: #1a1a1a;
-            color: #ddd;
-            border: 1px solid #333;
-            border-radius: 4px;
-            text-transform: uppercase;
-            font-weight: 600;
-            padding: 0.5rem 1rem;
-            width: 100%;
-        }
+        .stButton button { background-color: #1a1a1a; color: #ddd; border: 1px solid #333; border-radius: 4px; width: 100%; text-transform: uppercase; font-weight: 600; }
         .stButton button:hover { border-color: #00E096; color: #00E096; }
-
-        /* HEADER LOGO */
-        .header-logo {
-            font-size: 1.2rem;
-            font-weight: 800;
-            color: #fff;
-            border-bottom: 1px solid #222;
-            padding-bottom: 10px;
-            margin-bottom: 15px;
-            letter-spacing: 1px;
-        }
+        
+        .header-logo { font-size: 1.2rem; font-weight: 800; color: #fff; border-bottom: 1px solid #222; padding-bottom: 10px; margin-bottom: 15px; }
         .highlight { color: #00E096; }
     </style>
 """, unsafe_allow_html=True)
@@ -102,13 +65,11 @@ def save_data(df, filename):
 
 def run_scanner():
     log_scan = []
-    # 1. Calcio
     if os.path.exists("scanner_calcio.py"):
         try:
             subprocess.run([sys.executable, "scanner_calcio.py"], check=True)
             log_scan.append("Calcio: OK")
         except: log_scan.append("Calcio: Error")
-    # 2. Tennis
     if os.path.exists("scanner_tennis.py"):
         try:
             subprocess.run([sys.executable, "scanner_tennis.py"], check=True)
@@ -116,9 +77,16 @@ def run_scanner():
         except: log_scan.append("Tennis: Error")
     return log_scan
 
-# --- CARICAMENTO ---
+# --- CARICAMENTO E AUTO-RIPARAZIONE ---
 df_storico = load_data(config.FILE_STORICO)
 df_pending = load_data(config.FILE_PENDING)
+
+# PROTOCOLLO DI EMERGENZA: Se il file Pending ha colonne vecchie, RESETTALO SUBITO.
+if not df_pending.empty and "Quota_Betfair" not in df_pending.columns:
+    st.toast("⚠️ Database obsoleto rilevato. Esecuzione Auto-Fix...", icon="🛠️")
+    df_pending = pd.DataFrame() # Svuota in memoria
+    save_data(df_pending, config.FILE_PENDING) # Svuota su disco
+    st.rerun() # Riavvia l'app pulita
 
 # --- KPI ENGINE ---
 saldo_iniziale = config.BANKROLL_TOTALE
@@ -146,10 +114,7 @@ saldo_attuale = saldo_iniziale + profitto_totale
 # ==============================================================================
 with st.sidebar:
     st.markdown('<div class="header-logo"><i class="ri-crosshair-2-line highlight"></i> SNIPER<span class="highlight">SUITE</span></div>', unsafe_allow_html=True)
-    
-    # QUI C'ERA L'ERRORE - FIXATO
     menu = st.radio("MENU", ["◈ DASHBOARD", "◎ RADAR", "▤ REGISTRO"], label_visibility="collapsed")
-    
     st.markdown("---")
     c1, c2 = st.columns(2)
     c1.metric("BANKROLL", f"{config.BANKROLL_TOTALE/1000:.0f}k")
@@ -218,7 +183,8 @@ elif menu == "◎ RADAR":
     if not df_pending.empty:
         # Preparazione colonne per Value Betting
         if "Abbinata" not in df_pending.columns: df_pending.insert(0, "Abbinata", False)
-        if "Quota_Reale_Presa" not in df_pending.columns: df_pending["Quota_Reale_Presa"] = df_pending["Quota_Betfair"]
+        # QUI ERA L'ERRORE: Ora è protetto perché se manca la colonna, il codice sopra (riga 67) ha già resettato tutto.
+        if "Quota_Reale_Presa" not in df_pending.columns: df_pending["Quota_Reale_Presa"] = df_pending.get("Quota_Betfair", 0.0)
 
         # TABELLA VALUE BET
         edited_df = st.data_editor(
@@ -234,7 +200,6 @@ elif menu == "◎ RADAR":
                 "Quota_Reale_Presa": st.column_config.NumberColumn("✏️ Q.PRESA", format="%.2f", step=0.01),
                 "Stato_Trade": st.column_config.TextColumn("STATUS", width="small"),
             },
-            # ORDINE COLONNE
             column_order=["Abbinata", "Match", "Selezione", "Quota_Betfair", "Quota_Reale_Pinna", "Valore_%", "Stake_Euro", "Quota_Reale_Presa", "Stato_Trade"],
             hide_index=True,
             use_container_width=True
@@ -256,7 +221,6 @@ elif menu == "◎ RADAR":
                     remain = edited_df[edited_df["Abbinata"] == False]
                     cols_p = [c for c in remain.columns if c not in ["Abbinata", "Quota_Reale_Presa"]]
                     save_data(remain[cols_p], config.FILE_PENDING)
-                    
                     st.rerun()
         with c2:
             if st.button("CLEAR"):
