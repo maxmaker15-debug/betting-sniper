@@ -15,10 +15,9 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- CSS 2026 (LAYOUT CORRETTO) ---
+# --- CSS 2026 (LAYOUT FIX & DARK MODE) ---
 st.markdown("""
     <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
-    
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap');
         
@@ -27,8 +26,7 @@ st.markdown("""
             font-family: 'Inter', sans-serif;
         }
 
-        /* --- FIX IMPAGINAZIONE --- */
-        /* Aumentiamo il padding superiore per evitare che i titoli vengano tagliati */
+        /* FIX IMPAGINAZIONE */
         .block-container {
             padding-top: 3.5rem !important; 
             padding-bottom: 3rem !important;
@@ -36,7 +34,7 @@ st.markdown("""
             padding-right: 2rem !important;
         }
 
-        /* CARD COMPATTE */
+        /* CARD STYLE */
         div[data-testid="stMetric"], div[data-testid="stDataFrame"], div[data-testid="stPlotlyChart"] {
             background-color: #121212;
             border: 1px solid #333;
@@ -48,9 +46,7 @@ st.markdown("""
         div[data-testid="stMetric"]:hover { border-color: #555; }
 
         /* TITOLI */
-        h1 { font-size: 1.8rem; font-weight: 700; color: #fff; letter-spacing: -0.5px; margin-bottom: 10px; }
-        h2 { font-size: 1.4rem; font-weight: 600; color: #eee; margin-bottom: 10px; }
-        h3 { font-size: 1.1rem; font-weight: 600; color: #ccc; margin-top: 0; display: flex; align-items: center; gap: 8px;}
+        h1, h2, h3 { color: #fff; font-weight: 700; margin-bottom: 10px; }
         
         /* METRICHE */
         div[data-testid="stMetricValue"] {
@@ -63,14 +59,10 @@ st.markdown("""
             font-size: 0.8rem;
             text-transform: uppercase;
             font-weight: 500;
-            letter-spacing: 0.5px;
         }
 
         /* SIDEBAR */
-        section[data-testid="stSidebar"] { 
-            background-color: #0b0b0b; 
-            border-right: 1px solid #222; 
-        }
+        section[data-testid="stSidebar"] { background-color: #0b0b0b; border-right: 1px solid #222; }
         
         /* PULSANTI */
         .stButton button {
@@ -79,15 +71,11 @@ st.markdown("""
             border: 1px solid #333;
             border-radius: 4px;
             text-transform: uppercase;
-            font-size: 0.75rem;
             font-weight: 600;
             padding: 0.5rem 1rem;
             width: 100%;
         }
-        .stButton button:hover {
-            border-color: #00E096;
-            color: #00E096;
-        }
+        .stButton button:hover { border-color: #00E096; color: #00E096; }
 
         /* HEADER LOGO */
         .header-logo {
@@ -114,11 +102,13 @@ def save_data(df, filename):
 
 def run_scanner():
     log_scan = []
+    # 1. Calcio
     if os.path.exists("scanner_calcio.py"):
         try:
             subprocess.run([sys.executable, "scanner_calcio.py"], check=True)
             log_scan.append("Calcio: OK")
         except: log_scan.append("Calcio: Error")
+    # 2. Tennis
     if os.path.exists("scanner_tennis.py"):
         try:
             subprocess.run([sys.executable, "scanner_tennis.py"], check=True)
@@ -169,9 +159,8 @@ with st.sidebar:
 # ==============================================================================
 if menu == "◈ DASHBOARD":
     st.markdown('<h3><i class="ri-dashboard-3-line"></i> PERFORMANCE ANALYTICS</h3>', unsafe_allow_html=True)
-    st.write("") # Spaziatore
+    st.write("")
     
-    # RIGA 1
     k1, k2, k3, k4 = st.columns(4)
     k1.metric("BANKROLL", f"{saldo_attuale:.2f} €", delta=f"{profitto_totale:.2f} €")
     k2.metric("NET PROFIT", f"{profitto_totale:.2f} €")
@@ -180,7 +169,6 @@ if menu == "◈ DASHBOARD":
     
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # RIGA 2
     e1, e2, e3, e4 = st.columns(4)
     e1.metric("VELOCITY", f"{rotazione:.2f}x")
     e2.metric("VOLUME", f"{volume_giocato:.0f} €")
@@ -196,100 +184,53 @@ if menu == "◈ DASHBOARD":
             df_chart = df_storico.copy()
             df_chart['Progressivo'] = saldo_iniziale + df_chart['Profitto_Reale'].cumsum()
             df_chart['Trade'] = range(1, len(df_chart) + 1)
-            
             fig = px.area(df_chart, x='Trade', y='Progressivo')
             fig.update_traces(line_color='#00E096', fill_color='rgba(0, 224, 150, 0.05)')
-            fig.update_layout(
-                paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color='white',
-                margin=dict(t=10, l=0, r=0, b=0), height=300,
-                xaxis=dict(showgrid=False), yaxis=dict(gridcolor='#222')
-            )
+            fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color='white', margin=dict(t=10, l=0, r=0, b=0), height=300, xaxis=dict(showgrid=False), yaxis=dict(gridcolor='#222'))
             fig.add_hline(y=saldo_iniziale, line_dash="dot", line_color="#555")
             st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.caption("Waiting for data...")
+        else: st.caption("Waiting for data...")
 
     with c2:
         st.markdown('<h3><i class="ri-pie-chart-2-line"></i> ASSETS</h3>', unsafe_allow_html=True)
         if not df_storico.empty and 'Sport' in df_storico.columns:
             fig_pie = px.pie(df_storico, names='Sport', values='Stake_Euro', donut=0.7)
-            fig_pie.update_layout(
-                paper_bgcolor='rgba(0,0,0,0)', font_color='white', showlegend=False,
-                margin=dict(t=10, l=0, r=0, b=0), height=300
-            )
+            fig_pie.update_layout(paper_bgcolor='rgba(0,0,0,0)', font_color='white', showlegend=False, margin=dict(t=10, l=0, r=0, b=0), height=300)
             st.plotly_chart(fig_pie, use_container_width=True)
-        else:
-            st.caption("Waiting for data...")
+        else: st.caption("Waiting for data...")
 
 # ==============================================================================
 # PAGINA 2: RADAR
 # ==============================================================================
 elif menu == "◎ RADAR":
-    # Layout pulsante fixato
-    h_col, b_col = st.columns([5, 1.5]) # Più spazio al pulsante
-    with h_col: 
-        st.markdown('<h3><i class="ri-radar-line"></i> MARKET SCANNER</h3>', unsafe_allow_html=True)
+    h_col, b_col = st.columns([5, 1.5])
+    with h_col: st.markdown('<h3><i class="ri-radar-line"></i> MARKET SCANNER (WIDE)</h3>', unsafe_allow_html=True)
     with b_col: 
-        st.write("") # Spaziatore per allineare verticalmente
+        st.write("")
         if st.button("SCAN NOW", use_container_width=True):
-            with st.spinner("Scanning..."):
+            with st.spinner("Analyzing Market Value..."):
                 run_scanner()
                 st.rerun()
 
     if not df_pending.empty:
+        # Preparazione colonne per Value Betting
         if "Abbinata" not in df_pending.columns: df_pending.insert(0, "Abbinata", False)
-        if "Quota_Reale_Presa" not in df_pending.columns: df_pending["Quota_Reale_Presa"] = df_pending["Quota_Ingresso"]
+        # Quota presa di default è quella vista su Betfair, ma modificabile
+        if "Quota_Reale_Presa" not in df_pending.columns: df_pending["Quota_Reale_Presa"] = df_pending["Quota_Betfair"]
 
+        # TABELLA VALUE BET
         edited_df = st.data_editor(
             df_pending,
             column_config={
                 "Abbinata": st.column_config.CheckboxColumn("✅", width="small"),
-                "Match": st.column_config.TextColumn("MATCH", width="medium"),
-                "Valore_%": st.column_config.ProgressColumn("EV", min_value=0, max_value=5, format="%.2f"),
-                "Quota_Ingresso": st.column_config.NumberColumn("BOT", format="%.2f", disabled=True),
-                "Quota_Reale_Presa": st.column_config.NumberColumn("REAL", format="%.2f", step=0.01),
+                "Match": st.column_config.TextColumn("EVENTO", width="medium"),
+                "Selezione": st.column_config.TextColumn("BET", width="small"),
+                "Quota_Betfair": st.column_config.NumberColumn("Q.BF (Tu)", format="%.2f", disabled=True),
+                "Quota_Reale_Pinna": st.column_config.NumberColumn("REAL (Pinna)", format="%.2f", disabled=True),
+                "Valore_%": st.column_config.ProgressColumn("EV %", min_value=-5, max_value=10, format="%.2f%%"),
                 "Stake_Euro": st.column_config.NumberColumn("STAKE", format="%d €"),
-                "Target_Scalping": st.column_config.NumberColumn("EXIT", format="%.2f"),
+                "Quota_Reale_Presa": st.column_config.NumberColumn("✏️ Q.PRESA", format="%.2f", step=0.01),
+                "Stato_Trade": st.column_config.TextColumn("STATUS", width="small"),
             },
-            column_order=["Abbinata", "Match", "Selezione", "Valore_%", "Quota_Ingresso", "Quota_Reale_Presa", "Stake_Euro", "Target_Scalping"],
-            hide_index=True,
-            use_container_width=True
-        )
-
-        c1, c2 = st.columns([1, 5])
-        with c1:
-            if st.button("CONFIRM"):
-                to_move = edited_df[edited_df["Abbinata"] == True].copy()
-                if not to_move.empty:
-                    to_move["Quota_Ingresso"] = to_move["Quota_Reale_Presa"]
-                    to_move["Esito_Finale"] = "APERTA"
-                    to_move["Profitto_Reale"] = 0.0
-                    df_final = pd.concat([df_storico, to_move], ignore_index=True)
-                    cols_s = [c for c in df_final.columns if c not in ["Abbinata", "Quota_Reale_Presa"]]
-                    save_data(df_final[cols_s], config.FILE_STORICO)
-                    remain = edited_df[edited_df["Abbinata"] == False]
-                    cols_p = [c for c in remain.columns if c not in ["Abbinata", "Quota_Reale_Presa"]]
-                    save_data(remain[cols_p], config.FILE_PENDING)
-                    st.rerun()
-        with c2:
-            if st.button("CLEAR"):
-                cols_c = [c for c in df_pending.columns if c not in ["Abbinata", "Quota_Reale_Presa"]]
-                save_data(pd.DataFrame(columns=cols_c), config.FILE_PENDING)
-                st.rerun()
-    else:
-        st.info("No active signals.")
-
-# ==============================================================================
-# PAGINA 3: REGISTRO
-# ==============================================================================
-elif menu == "▤ REGISTRO":
-    st.markdown('<h3><i class="ri-file-list-2-line"></i> EXECUTION LOG</h3>', unsafe_allow_html=True)
-    if not df_storico.empty:
-        st.dataframe(df_storico, use_container_width=True, hide_index=True)
-        csv = df_storico.to_csv(index=False).encode('utf-8')
-        st.download_button("DOWNLOAD CSV", csv, "sniper_log.csv", "text/csv")
-        if st.button("WIPE DATA"):
-            save_data(pd.DataFrame(columns=df_storico.columns), config.FILE_STORICO)
-            st.rerun()
-    else:
-        st.caption("Empty log.")
+            # ORDINE COLONNE: Quota Tua vs Quota Vera -> Valore -> Stake
+            column_order=["Abbinata", "Match", "Selezione", "Quota_
