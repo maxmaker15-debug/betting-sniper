@@ -180,4 +180,112 @@ if menu == "◈ DASHBOARD":
 
     st.markdown("---")
 
-    c1
+    c1, c2 = st.columns([2, 1])
+    with c1:
+        st.markdown('<h3><i class="ri-line-chart-line"></i> TREND</h3>', unsafe_allow_html=True)
+        if not df_storico.empty:
+            df_chart = df_storico.copy()
+            df_chart['Progressivo'] = saldo_iniziale + df_chart['Profitto_Reale'].cumsum()
+            df_chart['Trade'] = range(1, len(df_chart) + 1)
+            fig = px.area(df_chart, x='Trade', y='Progressivo')
+            fig.update_traces(line_color='#00E096', fill_color='rgba(0, 224, 150, 0.05)')
+            fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color='white', margin=dict(t=10, l=0, r=0, b=0), height=300, xaxis=dict(showgrid=False), yaxis=dict(gridcolor='#222'))
+            fig.add_hline(y=saldo_iniziale, line_dash="dot", line_color="#555")
+            st.plotly_chart(fig, use_container_width=True)
+        else: st.caption("Waiting for data...")
+
+    with c2:
+        st.markdown('<h3><i class="ri-pie-chart-2-line"></i> ASSETS</h3>', unsafe_allow_html=True)
+        if not df_storico.empty and 'Sport' in df_storico.columns:
+            fig_pie = px.pie(df_storico, names='Sport', values='Stake_Euro', donut=0.7)
+            fig_pie.update_layout(paper_bgcolor='rgba(0,0,0,0)', font_color='white', showlegend=False, margin=dict(t=10, l=0, r=0, b=0), height=300)
+            st.plotly_chart(fig_pie, use_container_width=True)
+        else: st.caption("Waiting for data...")
+
+# ==============================================================================
+# PAGINA 2: RADAR
+# ==============================================================================
+elif menu == "◎ RADAR":
+    h_col, b_col = st.columns([5, 1.5])
+    with h_col: st.markdown('<h3><i class="ri-radar-line"></i> MARKET SCANNER (WIDE)</h3>', unsafe_allow_html=True)
+    with b_col: 
+        st.write("")
+        if st.button("SCAN NOW", use_container_width=True):
+            with st.spinner("Analyzing Market Value..."):
+                run_scanner()
+                st.rerun()
+
+    if not df_pending.empty:
+        # Preparazione colonne per Value Betting
+        if "Abbinata" not in df_pending.columns: df_pending.insert(0, "Abbinata", False)
+        if "Quota_Reale_Presa" not in df_pending.columns: df_pending["Quota_Reale_Presa"] = df_pending["Quota_Betfair"]
+
+        # TABELLA VALUE BET
+        edited_df = st.data_editor(
+            df_pending,
+            column_config={
+                "Abbinata": st.column_config.CheckboxColumn("✅", width="small"),
+                "Match": st.column_config.TextColumn("EVENTO", width="medium"),
+                "Selezione": st.column_config.TextColumn("BET", width="small"),
+                "Quota_Betfair": st.column_config.NumberColumn("Q.BF (Buy)", format="%.2f", disabled=True),
+                "Quota_Reale_Pinna": st.column_config.NumberColumn("REAL (Pinna)", format="%.2f", disabled=True),
+                "Valore_%": st.column_config.ProgressColumn("EV %", min_value=-5, max_value=10, format="%.2f%%"),
+                "Stake_Euro": st.column_config.NumberColumn("STAKE", format="%d €"),
+                "Quota_Reale_Presa": st.column_config.NumberColumn("✏️ Q.PRESA", format="%.2f", step=0.01),
+                "Stato_Trade": st.column_config.TextColumn("STATUS", width="small"),
+            },
+            # ORDINE COLONNE
+            column_order=["Abbinata", "Match", "Selezione", "Quota_Betfair", "Quota_Reale_Pinna", "Valore_%", "Stake_Euro", "Quota_Reale_Presa", "Stato_Trade"],
+            hide_index=True,
+            use_container_width=True
+        )
+
+        c1, c2 = st.columns([1, 5])
+        with c1:
+            if st.button("CONFIRM TRADE"):
+                to_move = edited_df[edited_df["Abbinata"] == True].copy()
+                if not to_move.empty:
+                    to_move["Quota_Ingresso"] = to_move["Quota_Reale_Presa"]
+                    to_move["Esito_Finale"] = "APERTA"
+                    to_move["Profitto_Reale"] = 0.0
+                    
+                    df_final = pd.concat([df_storico, to_move], ignore_index=True)
+                    cols_s = [c for c in df_final.columns if c not in ["Abbinata", "Quota_Reale_Presa"]]
+                    save_data(df_final[cols_s], config.FILE_STORICO)
+                    
+                    remain = edited_df[edited_df["Abbinata"] == False]
+                    cols_p = [c for c in remain.columns if c not in ["Abbinata", "Quota_Reale_Presa"]]
+                    save_data(remain[cols_p], config.FILE_PENDING)
+                    
+                    st.rerun()
+        with c2:
+            if st.button("CLEAR"):
+                cols_c = [c for c in df_pending.columns if c not in ["Abbinata", "Quota_Reale_Presa"]]
+                save_data(pd.DataFrame(columns=cols_c), config.FILE_PENDING)
+                st.rerun()
+    else:
+        st.info("No signals found. Press SCAN NOW.")
+
+# ==============================================================================
+# PAGINA 3: REGISTRO
+# ==============================================================================
+elif menu == "▤ REGISTRO":
+    st.markdown('<h3><i class="ri-file-list-2-line"></i> EXECUTION LOG</h3>', unsafe_allow_html=True)
+    if not df_storico.empty:
+        st.dataframe(
+            df_storico, 
+            use_container_width=True, 
+            hide_index=True,
+            column_config={
+                "Stake_Euro": st.column_config.NumberColumn("Stake", format="%d €"),
+                "Profitto_Reale": st.column_config.NumberColumn("Profitto", format="%.2f €"),
+                "Valore_%": st.column_config.NumberColumn("EV %", format="%.2f%%"),
+            }
+        )
+        csv = df_storico.to_csv(index=False).encode('utf-8')
+        st.download_button("DOWNLOAD CSV", csv, "sniper_log.csv", "text/csv")
+        if st.button("WIPE DATA"):
+            save_data(pd.DataFrame(columns=df_storico.columns), config.FILE_STORICO)
+            st.rerun()
+    else:
+        st.caption("Empty log.")
