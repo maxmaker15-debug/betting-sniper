@@ -45,58 +45,45 @@ st.markdown("""
 # --- FUNZIONI BACKEND ---
 
 def enforce_schema(df):
-    """
-    Assicura che il DataFrame abbia i tipi corretti.
-    """
     try:
         if df.empty: return df
         
-        # 1. FIX NUMERI (Float) - Converte qualsiasi cosa in float o 0.0
-        numeric_cols_float = ["Quota_Betfair", "Quota_Reale_Pinna", "Valore_%", "Quota_Reale_Presa", "Profitto_Reale"]
+        # FIX NUMERI (Float) - Aggiunta Quota_Target
+        numeric_cols_float = ["Quota_Betfair", "Quota_Target", "Quota_Reale_Pinna", "Valore_%", "Quota_Reale_Presa", "Profitto_Reale"]
         for col in numeric_cols_float:
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0).astype(float)
         
-        # 2. FIX INTERI (Int) - Converte Stake in intero
+        # FIX INTERI
         if "Stake_Euro" in df.columns:
             df["Stake_Euro"] = pd.to_numeric(df["Stake_Euro"], errors='coerce').fillna(0).astype(int)
             
-        # 3. FIX BOOLEANI
-        if "Abbinata" in df.columns:
-            df["Abbinata"] = df["Abbinata"].astype(bool)
+        # FIX BOOLEANI
+        if "Abbinata" in df.columns: df["Abbinata"] = df["Abbinata"].astype(bool)
 
-        # 4. FIX TESTO
+        # FIX TESTO
         text_cols = ["Sport", "Torneo", "Match", "Selezione", "Stato_Trade", "Esito_Finale"]
         for col in text_cols:
-            if col in df.columns:
-                df[col] = df[col].fillna("").astype(str)
+            if col in df.columns: df[col] = df[col].fillna("").astype(str)
 
         return df
-    except Exception as e:
-        return pd.DataFrame()
+    except Exception as e: return pd.DataFrame()
 
 def load_data(filename):
     if not os.path.exists(filename): return pd.DataFrame()
     try:
-        # LETTURA RIGIDA: Separatore Virgola (,)
         df = pd.read_csv(filename, sep=',')
         return enforce_schema(df)
-    except: 
-        # Se fallisce, prova a resettare o ritorna vuoto
-        return pd.DataFrame()
+    except: return pd.DataFrame()
 
 def save_data(df, filename):
-    # SCRITTURA RIGIDA: Separatore Virgola (,)
     df.to_csv(filename, index=False, sep=',')
 
 def run_scanner():
     log_scan = []
-    # Cancella il vecchio file prima di scansionare per evitare conflitti
+    # Cancella preventivamente per evitare conflitti di colonne vecchie
     if os.path.exists(config.FILE_PENDING):
-        try:
-            # Opzionale: Se vuoi mantenere lo storico dei "watch", non cancellare. 
-            # Ma per pulire il casino attuale, meglio cancellare se corrotto.
-            pass
+        try: os.remove(config.FILE_PENDING)
         except: pass
 
     if os.path.exists("scanner_calcio.py"):
@@ -209,38 +196,39 @@ elif menu == "◎ RADAR":
         st.write("")
         if st.button("SCAN NOW", use_container_width=True):
             st.session_state.nav_selection = "◎ RADAR"
-            # RESET PREVENTIVO PER EVITARE DISALLINEAMENTI
             if os.path.exists(config.FILE_PENDING):
-                os.remove(config.FILE_PENDING)
+                try: os.remove(config.FILE_PENDING)
+                except: pass
             
-            with st.spinner("Scanning & Rebuilding..."):
+            with st.spinner("Analyzing Market Value..."):
                 run_scanner()
                 st.rerun()
 
     if not df_pending.empty:
-        # Check colonne
+        # Check colonne e default
         if "Abbinata" not in df_pending.columns: df_pending.insert(0, "Abbinata", False)
         if "Quota_Betfair" not in df_pending.columns: df_pending["Quota_Betfair"] = 0.0
+        if "Quota_Target" not in df_pending.columns: df_pending["Quota_Target"] = df_pending["Quota_Betfair"]
         if "Quota_Reale_Presa" not in df_pending.columns: df_pending["Quota_Reale_Presa"] = df_pending["Quota_Betfair"]
-        if "Stato_Trade" not in df_pending.columns: df_pending["Stato_Trade"] = ""
         
         df_pending = enforce_schema(df_pending)
 
         try:
+            # TABELLA EVOLUTA
             edited_df = st.data_editor(
                 df_pending,
                 column_config={
                     "Abbinata": st.column_config.CheckboxColumn("✅", width="small"),
                     "Match": st.column_config.TextColumn("EVENTO", width="medium"),
                     "Selezione": st.column_config.TextColumn("BET", width="small"),
-                    "Quota_Betfair": st.column_config.NumberColumn("Q.BF (Buy)", format="%.2f", disabled=True),
-                    "Quota_Reale_Pinna": st.column_config.NumberColumn("REAL (Pinna)", format="%.2f", disabled=True),
-                    "Valore_%": st.column_config.ProgressColumn("EV %", min_value=-10, max_value=10, format="%.2f%%"),
+                    "Quota_Betfair": st.column_config.NumberColumn("Q.BF (Attuale)", format="%.2f", disabled=True),
+                    "Quota_Target": st.column_config.NumberColumn("🎯 TARGET", format="%.2f", disabled=True, help="Piazza l'ordine a questa quota per avere EV 2%"),
+                    "Valore_%": st.column_config.ProgressColumn("EV %", min_value=-5, max_value=10, format="%.2f%%"),
                     "Stake_Euro": st.column_config.NumberColumn("STAKE", format="%d €"),
                     "Quota_Reale_Presa": st.column_config.NumberColumn("✏️ Q.PRESA", format="%.2f", step=0.01),
                     "Stato_Trade": st.column_config.TextColumn("STATUS", width="small"),
                 },
-                column_order=["Abbinata", "Match", "Selezione", "Quota_Betfair", "Quota_Reale_Pinna", "Valore_%", "Stake_Euro", "Quota_Reale_Presa", "Stato_Trade"],
+                column_order=["Abbinata", "Match", "Selezione", "Quota_Betfair", "Quota_Target", "Valore_%", "Stake_Euro", "Quota_Reale_Presa", "Stato_Trade"],
                 hide_index=True,
                 use_container_width=True
             )
@@ -255,7 +243,7 @@ elif menu == "◎ RADAR":
                         to_move["Profitto_Reale"] = 0.0
                         
                         df_final = pd.concat([df_storico, to_move], ignore_index=True)
-                        cols_s = [c for c in df_final.columns if c not in ["Abbinata", "Quota_Reale_Presa"]]
+                        cols_s = [c for c in df_final.columns if c not in ["Abbinata", "Quota_Reale_Presa", "Quota_Target"]]
                         save_data(df_final[cols_s], config.FILE_STORICO)
                         
                         remain = edited_df[edited_df["Abbinata"] == False]
@@ -263,7 +251,7 @@ elif menu == "◎ RADAR":
                         save_data(remain[cols_p], config.FILE_PENDING)
                         st.rerun()
             with c2:
-                if st.button("RESET RADAR (Fix Columns)"):
+                if st.button("RESET RADAR"):
                     save_data(pd.DataFrame(), config.FILE_PENDING)
                     st.rerun()
 
