@@ -42,42 +42,46 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- FUNZIONI BACKEND INTELLIGENTI ---
+# --- FUNZIONI BACKEND ---
 
 def clean_currency(x):
     """Pulisce stringhe numeriche da formati italiani o sporchi"""
     if isinstance(x, str):
-        # Sostituisce virgola con punto
-        x = x.replace(',', '.')
-        # Rimuove simboli valuta o spazi
-        x = x.replace('€', '').replace('%', '').strip()
+        x = x.replace(',', '.').replace('€', '').replace('%', '').strip()
     return x
 
 def enforce_schema(df):
     """
-    Forza i tipi di dati corretti gestendo il formato italiano.
+    Mappa le vecchie colonne sulle nuove e forza i tipi numerici.
     """
     try:
         if df.empty: return df
+        
+        # 0. MAPPING COLONNE VECCHIE -> NUOVE (FIX ZERO PROBLEM)
+        rename_map = {
+            "Quota_Ingresso": "Quota_Betfair",  # Vecchio nome -> Nuovo nome
+            "Target_Scalping": "Quota_Reale_Pinna" # Fallback se manca
+        }
+        df = df.rename(columns=rename_map)
 
-        # COLONNE NUMERICHE (Float)
+        # 1. FIX NUMERI (Float)
         numeric_cols_float = ["Quota_Betfair", "Quota_Reale_Pinna", "Valore_%", "Quota_Reale_Presa", "Profitto_Reale"]
         for col in numeric_cols_float:
             if col in df.columns:
-                # Applica pulizia virgola/punto prima di convertire
-                df[col] = df[col].apply(clean_currency)
+                # Convertiamo in stringa, puliamo virgole, poi in numero
+                df[col] = df[col].astype(str).apply(clean_currency)
                 df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0).astype(float)
         
-        # COLONNE INTERE (Int)
+        # 2. FIX INTERI (Int)
         if "Stake_Euro" in df.columns:
-            df["Stake_Euro"] = df["Stake_Euro"].apply(clean_currency)
+            df["Stake_Euro"] = df["Stake_Euro"].astype(str).apply(clean_currency)
             df["Stake_Euro"] = pd.to_numeric(df["Stake_Euro"], errors='coerce').fillna(0).astype(int)
             
-        # BOOLEANI
+        # 3. FIX BOOLEANI
         if "Abbinata" in df.columns:
             df["Abbinata"] = df["Abbinata"].astype(bool)
 
-        # TESTO (Evita NaN)
+        # 4. FIX TESTO
         text_cols = ["Sport", "Torneo", "Match", "Selezione", "Stato_Trade", "Esito_Finale"]
         for col in text_cols:
             if col in df.columns:
@@ -91,14 +95,11 @@ def enforce_schema(df):
 def load_data(filename):
     if not os.path.exists(filename): return pd.DataFrame()
     try:
-        # Tenta lettura intelligente del separatore (virgola o punto e virgola)
         df = pd.read_csv(filename, sep=None, engine='python')
         return enforce_schema(df)
-    except: 
-        return pd.DataFrame()
+    except: return pd.DataFrame()
 
 def save_data(df, filename):
-    # Salviamo sempre in formato standard (virgola e punto) per consistenza
     df.to_csv(filename, index=False)
 
 def run_scanner():
@@ -146,11 +147,9 @@ with st.sidebar:
     
     options = ["◈ DASHBOARD", "◎ RADAR", "▤ REGISTRO"]
     if "nav_selection" not in st.session_state: st.session_state.nav_selection = options[0]
-    
     def on_menu_change(): st.session_state.nav_selection = st.session_state.menu_key
     try: ix = options.index(st.session_state.nav_selection)
     except: ix = 0
-        
     menu = st.radio("MENU", options, index=ix, key="menu_key", on_change=on_menu_change, label_visibility="collapsed")
     
     st.markdown("---")
@@ -220,13 +219,14 @@ elif menu == "◎ RADAR":
                 st.rerun()
 
     if not df_pending.empty:
-        # Setup Colonne
+        # Check colonne
         if "Abbinata" not in df_pending.columns: df_pending.insert(0, "Abbinata", False)
+        # Fallback sicuro
         if "Quota_Betfair" not in df_pending.columns: df_pending["Quota_Betfair"] = 0.0
         if "Quota_Reale_Presa" not in df_pending.columns: df_pending["Quota_Reale_Presa"] = df_pending["Quota_Betfair"]
         if "Stato_Trade" not in df_pending.columns: df_pending["Stato_Trade"] = ""
         
-        # FIX FINALE: Ricarica schema con pulizia virgole
+        # FIX FINALE: Enforce Schema con rename
         df_pending = enforce_schema(df_pending)
 
         try:
@@ -266,14 +266,14 @@ elif menu == "◎ RADAR":
                         save_data(remain[cols_p], config.FILE_PENDING)
                         st.rerun()
             with c2:
-                if st.button("CLEAR"):
-                    cols_c = [c for c in df_pending.columns if c not in ["Abbinata", "Quota_Reale_Presa"]]
-                    save_data(pd.DataFrame(columns=cols_c), config.FILE_PENDING)
+                # PULSANTE ROSSO PER FIXARE IL FILE CORROTTO
+                if st.button("RESET RADAR (Fix Zeros)"):
+                    save_data(pd.DataFrame(), config.FILE_PENDING)
                     st.rerun()
 
         except Exception as e:
-            st.error(f"Errore Visualizzazione: {e}")
-            if st.button("RESET DATABASE DI EMERGENZA"):
+            st.error(f"Errore: {e}")
+            if st.button("RESET EMERGENZA"):
                 save_data(pd.DataFrame(), config.FILE_PENDING)
                 st.rerun()
 
