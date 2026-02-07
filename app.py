@@ -44,27 +44,31 @@ st.markdown("""
 
 # --- FUNZIONI BACKEND ---
 
-def enforce_schema(df, db_type='pending'):
+def enforce_schema(df):
     """
-    Forza i tipi di dati corretti per evitare crash di Streamlit.
+    Forza i tipi di dati corretti (Numeri e Testo) per evitare crash di Streamlit.
     """
     try:
-        # Colonne numeriche critiche che causano crash se sono Object
+        # 1. FIX NUMERI (Float)
         numeric_cols_float = ["Quota_Betfair", "Quota_Reale_Pinna", "Valore_%", "Quota_Reale_Presa", "Profitto_Reale"]
-        numeric_cols_int = ["Stake_Euro"]
-        
         for col in numeric_cols_float:
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0).astype(float)
         
-        for col in numeric_cols_int:
-            if col in df.columns:
-                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0).astype(int)
-                
-        # Boolean check
+        # 2. FIX INTERI (Int)
+        if "Stake_Euro" in df.columns:
+            df["Stake_Euro"] = pd.to_numeric(df["Stake_Euro"], errors='coerce').fillna(0).astype(int)
+            
+        # 3. FIX BOOLEANI
         if "Abbinata" in df.columns:
             df["Abbinata"] = df["Abbinata"].astype(bool)
-            
+
+        # 4. FIX TESTO (Importante: evita che i NaN vengano letti come float)
+        text_cols = ["Sport", "Torneo", "Match", "Selezione", "Stato_Trade", "Esito_Finale"]
+        for col in text_cols:
+            if col in df.columns:
+                df[col] = df[col].fillna("").astype(str)
+
         return df
     except Exception as e:
         st.error(f"Schema Error: {e}")
@@ -108,9 +112,7 @@ rotazione = 0.0
 n_ops = 0
 
 if not df_storico.empty:
-    if 'Profitto_Reale' not in df_storico.columns: df_storico['Profitto_Reale'] = 0.0
-    if 'Stake_Euro' not in df_storico.columns: df_storico['Stake_Euro'] = 0.0
-    
+    # Ricalcolo KPI sicuro
     profitto_totale = df_storico['Profitto_Reale'].sum()
     volume_giocato = df_storico['Stake_Euro'].sum()
     n_ops = len(df_storico)
@@ -207,8 +209,9 @@ elif menu == "◎ RADAR":
         if "Abbinata" not in df_pending.columns: df_pending.insert(0, "Abbinata", False)
         if "Quota_Betfair" not in df_pending.columns: df_pending["Quota_Betfair"] = 0.0
         if "Quota_Reale_Presa" not in df_pending.columns: df_pending["Quota_Reale_Presa"] = df_pending["Quota_Betfair"]
+        if "Stato_Trade" not in df_pending.columns: df_pending["Stato_Trade"] = ""
         
-        # 2. RI-APPUNTO DELLO SCHEMA (Doppia sicurezza prima del render)
+        # 2. RI-APPUNTO DELLO SCHEMA (Type Safety)
         df_pending = enforce_schema(df_pending)
 
         # 3. RENDER TABELLA
@@ -269,7 +272,6 @@ elif menu == "◎ RADAR":
 elif menu == "▤ REGISTRO":
     st.markdown('<h3><i class="ri-file-list-2-line"></i> EXECUTION LOG</h3>', unsafe_allow_html=True)
     if not df_storico.empty:
-        # Enforce anche qui
         df_show = enforce_schema(df_storico.copy())
 
         st.dataframe(
