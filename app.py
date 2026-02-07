@@ -15,7 +15,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- CSS 2026 (LAYOUT FIX & DARK MODE) ---
+# --- CSS 2026 ---
 st.markdown("""
     <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
     <style>
@@ -146,4 +146,38 @@ saldo_attuale = saldo_iniziale + profitto_totale
 # ==============================================================================
 with st.sidebar:
     st.markdown('<div class="header-logo"><i class="ri-crosshair-2-line highlight"></i> SNIPER<span class="highlight">SUITE</span></div>', unsafe_allow_html=True)
-    menu = st.radio("MENU
+    
+    # QUI C'ERA L'ERRORE - FIXATO
+    menu = st.radio("MENU", ["◈ DASHBOARD", "◎ RADAR", "▤ REGISTRO"], label_visibility="collapsed")
+    
+    st.markdown("---")
+    c1, c2 = st.columns(2)
+    c1.metric("BANKROLL", f"{config.BANKROLL_TOTALE/1000:.0f}k")
+    c2.metric("LIMIT", f"{config.STAKE_MASSIMO}€")
+    st.markdown("---")
+    if st.button("REBOOT"): st.rerun()
+
+# ==============================================================================
+# PAGINA 1: DASHBOARD
+# ==============================================================================
+if menu == "◈ DASHBOARD":
+    st.markdown('<h3><i class="ri-dashboard-3-line"></i> PERFORMANCE ANALYTICS</h3>', unsafe_allow_html=True)
+    st.write("")
+    
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric("BANKROLL", f"{saldo_attuale:.2f} €", delta=f"{profitto_totale:.2f} €")
+    k2.metric("NET PROFIT", f"{profitto_totale:.2f} €")
+    k3.metric("ROI", f"{roi:.2f} %")
+    k4.metric("ROE", f"{roe:.2f} %")
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    e1, e2, e3, e4 = st.columns(4)
+    e1.metric("VELOCITY", f"{rotazione:.2f}x")
+    e2.metric("VOLUME", f"{volume_giocato:.0f} €")
+    e3.metric("TRADES", n_ops)
+    e4.metric("AVG STAKE", f"{volume_giocato/n_ops:.0f} €" if n_ops>0 else "0")
+
+    st.markdown("---")
+
+    c1
