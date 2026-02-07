@@ -1,15 +1,3 @@
-Comandante, ricevuto. 🦅
-
-L'errore è un conflitto di "tipo". Il file CSV ha salvato i numeri come "Testo" (Stringhe), ma la tabella (st.data_editor) è configurata per mostrare una "Barra di Progresso" (ProgressColumn), che accetta solo numeri puri (Float/Int).
-
-Quando l'app prova a disegnare una barra di progresso basata su un testo, va in crash (StreamlitAPIException).
-
-Soluzione (V25 - Strong Typing): Ho aggiunto un blocco di codice che forza la conversione di tutte le colonne numeriche appena vengono lette. In questo modo, qualsiasi cosa arrivi dal CSV viene trasformata in numeri puri prima di essere mostrata.
-
-Copia e sostituisci tutto app.py.
-
-📂 FILE: app.py (V25 - Final Stable)
-Python
 import streamlit as st
 import pandas as pd
 import plotly.express as px
