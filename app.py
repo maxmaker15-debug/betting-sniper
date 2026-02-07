@@ -1,15 +1,4 @@
-Comandante, ricevuto. 🦅
 
-L'errore è chiaro: KeyError: 'Quota_Betfair'.
-
-Cosa è successo? Il tuo file pending_trades.csv contiene ancora i dati della Vecchia Versione (dove la colonna si chiamava Quota_Ingresso). Il Nuovo Codice cerca la colonna Quota_Betfair, non la trova nel file vecchio e l'applicazione si schianta prima ancora di poterti mostrare il tasto per cancellare i dati. È un cane che si morde la coda.
-
-SOLUZIONE: AUTO-RIPARAZIONE (V23) Ho inserito un "Antivirus" nel codice app.py. Appena l'app si avvia, controlla se il file CSV ha le colonne giuste. Se trova colonne vecchie (della versione scalping), cancella automaticamente il file corrotto e ne crea uno nuovo pulito, senza crashare.
-
-Ecco il codice V23 - Self Healing. Copia e sostituisci tutto app.py.
-
-📂 FILE: app.py (V23 - Auto-Fix Database)
-Python
 import streamlit as st
 import pandas as pd
 import plotly.express as px
