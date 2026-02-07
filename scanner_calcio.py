@@ -7,7 +7,6 @@ API_KEY = config.API_KEY
 TELEGRAM_TOKEN = "8145327630:AAHJC6vDjvGUyPT0pKw63fyW53hTl_F873U"
 TELEGRAM_CHAT_ID = "5562163433"
 
-# --- WHITELIST CAMPIONATI ---
 COMPETIZIONI_ELITE = [
     'soccer_italy_serie_a', 'soccer_italy_serie_b',
     'soccer_england_premier_league', 'soccer_england_championship',
@@ -18,11 +17,10 @@ COMPETIZIONI_ELITE = [
     'soccer_uefa_champions_league', 'soccer_uefa_europa_league'
 ]
 
-# --- PARAMETRI FILTRO ---
 MIN_ODDS = 1.70
-MAX_ODDS = 4.00     # Alzato leggermente per includere più occasioni
-MIN_EV_SAVE = -2.0  # SALVA nel Radar anche se è leggermente negativa (Watchlist)
-MIN_EV_NOTIFY = 1.0 # NOTIFICA Telegram solo se è Value pura
+MAX_ODDS = 4.00
+MIN_EV_SAVE = -2.0
+MIN_EV_NOTIFY = 1.0
 
 def send_telegram(msg):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
@@ -43,20 +41,29 @@ def calcola_quota_reale_pinnacle(odds_dict):
 
 def calcola_stake_value(ev_perc, quota):
     try:
-        if ev_perc < 1.0: return 0 # Nessuno stake per la Watchlist
+        if ev_perc < 1.0: return 0 
         if ev_perc < 2.5: return 50
         if ev_perc < 5.0: return 100
         return config.STAKE_MASSIMO
     except: return 0
 
 def scan_calcio():
-    print(f"--- ⚽ SCANSIONE CALCIO (V21 WIDE) - {datetime.now()} ---")
+    print(f"--- ⚽ SCANSIONE CALCIO (V31 STRICT) - {datetime.now()} ---")
     
-    # Header aggiornato per Value Betting (Senza Target Scalping)
+    # Header corretto e allineato con l'App V31
     header = ['Sport', 'Data_Scan', 'Orario_Match', 'Torneo', 'Match', 'Selezione', 'Quota_Betfair', 'Quota_Reale_Pinna', 'Valore_%', 'Stake_Euro', 'Stato_Trade', 'Esito_Finale', 'Profitto_Reale']
     
+    # Se il file non esiste o è corrotto, lo ricrea
+    mode = 'a'
     if not os.path.exists(config.FILE_PENDING):
-        with open(config.FILE_PENDING, 'w', newline='', encoding='utf-8') as f: csv.writer(f).writerow(header)
+        mode = 'w'
+    
+    # Scrittura CSV Blindata (Delimiter virgola)
+    f = open(config.FILE_PENDING, mode, newline='', encoding='utf-8')
+    writer = csv.writer(f, delimiter=',') # FORZA VIRGOLA
+    
+    if mode == 'w':
+        writer.writerow(header)
 
     try:
         resp = requests.get('https://api.the-odds-api.com/v4/sports', params={'apiKey': API_KEY})
@@ -102,18 +109,28 @@ def scan_calcio():
                     ev = (true_prob * bf_netto) - 1
                     ev_perc = round(ev * 100, 2)
                     
-                    # LOGICA WATCHLIST ESTESA
                     if ev_perc >= MIN_EV_SAVE:
                         print(f"🔎 TROVATO: {match_name} -> EV {ev_perc}%")
                         
                         stake = calcola_stake_value(ev_perc, bf_price)
                         stato = "VALUE" if ev_perc >= MIN_EV_NOTIFY else "WATCH"
                         
-                        # Salvataggio CSV
-                        with open(config.FILE_PENDING, 'a', newline='', encoding='utf-8') as f:
-                            csv.writer(f).writerow(['CALCIO', datetime.now().strftime("%Y-%m-%d %H:%M"), converti_orario(event['commence_time']), league['title'], match_name, sel_name, bf_price, round(fair_odds, 2), f"{ev_perc}", stake, stato, '', ''])
+                        # SCRITTURA RIGA (Ordine esatto delle colonne)
+                        writer.writerow([
+                            'CALCIO', 
+                            datetime.now().strftime("%Y-%m-%d %H:%M"), 
+                            converti_orario(event['commence_time']), 
+                            league['title'], 
+                            match_name, 
+                            sel_name, 
+                            bf_price,               # Quota Betfair
+                            round(fair_odds, 2),    # Quota Reale Pinna
+                            ev_perc,                # Valore % (Numero puro)
+                            stake,                  # Stake
+                            stato,                  # Stato
+                            '', ''                  # Colonne vuote finali
+                        ])
                         
-                        # Telegram SOLO se è Value Pura
                         if ev_perc >= MIN_EV_NOTIFY:
                             msg = (
                                 f"🟢 VALUE BET CALCIO: {sel_name}\n"
@@ -123,8 +140,9 @@ def scan_calcio():
                                 f"💰 Stake: {stake}€"
                             )
                             send_telegram(msg)
-
     except Exception as e: print(f"Errore Calcio: {e}")
+    finally:
+        f.close()
 
 if __name__ == "__main__":
     scan_calcio()
