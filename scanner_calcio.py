@@ -21,7 +21,7 @@ COMPETIZIONI_ELITE = [
 # --- PARAMETRI FILTRO ---
 MIN_ODDS = 1.70
 MAX_ODDS = 3.50
-MIN_EV = 1.0  # Minimo 1% di vantaggio matematico
+MIN_EV = -10.0  # Mostrami tutto, anche se perdo soldi matematicamente
 
 def send_telegram(msg):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
