@@ -53,11 +53,13 @@ def save_data(df, filename):
 
 def run_scanner():
     log_scan = []
+    # 1. Calcio
     if os.path.exists("scanner_calcio.py"):
         try:
             subprocess.run([sys.executable, "scanner_calcio.py"], check=True)
             log_scan.append("Calcio: OK")
         except: log_scan.append("Calcio: Error")
+    # 2. Tennis
     if os.path.exists("scanner_tennis.py"):
         try:
             subprocess.run([sys.executable, "scanner_tennis.py"], check=True)
@@ -65,16 +67,9 @@ def run_scanner():
         except: log_scan.append("Tennis: Error")
     return log_scan
 
-# --- CARICAMENTO E AUTO-RIPARAZIONE ---
+# --- CARICAMENTO ---
 df_storico = load_data(config.FILE_STORICO)
 df_pending = load_data(config.FILE_PENDING)
-
-# PROTOCOLLO DI EMERGENZA: Se il file Pending ha colonne vecchie, RESETTALO SUBITO.
-if not df_pending.empty and "Quota_Betfair" not in df_pending.columns:
-    st.toast("⚠️ Database obsoleto rilevato. Esecuzione Auto-Fix...", icon="🛠️")
-    df_pending = pd.DataFrame() # Svuota in memoria
-    save_data(df_pending, config.FILE_PENDING) # Svuota su disco
-    st.rerun() # Riavvia l'app pulita
 
 # --- KPI ENGINE ---
 saldo_iniziale = config.BANKROLL_TOTALE
@@ -98,11 +93,30 @@ if not df_storico.empty:
 saldo_attuale = saldo_iniziale + profitto_totale
 
 # ==============================================================================
-# SIDEBAR
+# SIDEBAR (CON NAVIGAZIONE PERSISTENTE)
 # ==============================================================================
 with st.sidebar:
     st.markdown('<div class="header-logo"><i class="ri-crosshair-2-line highlight"></i> SNIPER<span class="highlight">SUITE</span></div>', unsafe_allow_html=True)
-    menu = st.radio("MENU", ["◈ DASHBOARD", "◎ RADAR", "▤ REGISTRO"], label_visibility="collapsed")
+    
+    # GESTIONE STATO MENU PER EVITARE RESET
+    options = ["◈ DASHBOARD", "◎ RADAR", "▤ REGISTRO"]
+    
+    # Se non esiste lo stato, lo inizializziamo
+    if "nav_selection" not in st.session_state:
+        st.session_state.nav_selection = options[0]
+    
+    # Callback per aggiornare lo stato quando clicchi
+    def on_menu_change():
+        st.session_state.nav_selection = st.session_state.menu_key
+        
+    # Trova l'indice corretto
+    try:
+        ix = options.index(st.session_state.nav_selection)
+    except:
+        ix = 0
+        
+    menu = st.radio("MENU", options, index=ix, key="menu_key", on_change=on_menu_change, label_visibility="collapsed")
+    
     st.markdown("---")
     c1, c2 = st.columns(2)
     c1.metric("BANKROLL", f"{config.BANKROLL_TOTALE/1000:.0f}k")
@@ -164,6 +178,8 @@ elif menu == "◎ RADAR":
     with b_col: 
         st.write("")
         if st.button("SCAN NOW", use_container_width=True):
+            # Impostiamo forzatamente lo stato su RADAR prima di rilanciare
+            st.session_state.nav_selection = "◎ RADAR"
             with st.spinner("Analyzing Market Value..."):
                 run_scanner()
                 st.rerun()
@@ -171,8 +187,9 @@ elif menu == "◎ RADAR":
     if not df_pending.empty:
         # Preparazione colonne per Value Betting
         if "Abbinata" not in df_pending.columns: df_pending.insert(0, "Abbinata", False)
-        # QUI ERA L'ERRORE: Ora è protetto perché se manca la colonna, il codice sopra (riga 67) ha già resettato tutto.
-        if "Quota_Reale_Presa" not in df_pending.columns: df_pending["Quota_Reale_Presa"] = df_pending.get("Quota_Betfair", 0.0)
+        # Fallback sicuro: se Quota_Betfair non esiste (vecchio file), usa 0.0 per non crashare
+        if "Quota_Betfair" not in df_pending.columns: df_pending["Quota_Betfair"] = 0.0
+        if "Quota_Reale_Presa" not in df_pending.columns: df_pending["Quota_Reale_Presa"] = df_pending["Quota_Betfair"]
 
         # TABELLA VALUE BET
         edited_df = st.data_editor(
@@ -209,6 +226,7 @@ elif menu == "◎ RADAR":
                     remain = edited_df[edited_df["Abbinata"] == False]
                     cols_p = [c for c in remain.columns if c not in ["Abbinata", "Quota_Reale_Presa"]]
                     save_data(remain[cols_p], config.FILE_PENDING)
+                    
                     st.rerun()
         with c2:
             if st.button("CLEAR"):
