@@ -1,3 +1,15 @@
+Comandante, ricevuto. 🦅
+
+L'errore è un conflitto di "tipo". Il file CSV ha salvato i numeri come "Testo" (Stringhe), ma la tabella (st.data_editor) è configurata per mostrare una "Barra di Progresso" (ProgressColumn), che accetta solo numeri puri (Float/Int).
+
+Quando l'app prova a disegnare una barra di progresso basata su un testo, va in crash (StreamlitAPIException).
+
+Soluzione (V25 - Strong Typing): Ho aggiunto un blocco di codice che forza la conversione di tutte le colonne numeriche appena vengono lette. In questo modo, qualsiasi cosa arrivi dal CSV viene trasformata in numeri puri prima di essere mostrata.
+
+Copia e sostituisci tutto app.py.
+
+📂 FILE: app.py (V25 - Final Stable)
+Python
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -53,13 +65,11 @@ def save_data(df, filename):
 
 def run_scanner():
     log_scan = []
-    # 1. Calcio
     if os.path.exists("scanner_calcio.py"):
         try:
             subprocess.run([sys.executable, "scanner_calcio.py"], check=True)
             log_scan.append("Calcio: OK")
         except: log_scan.append("Calcio: Error")
-    # 2. Tennis
     if os.path.exists("scanner_tennis.py"):
         try:
             subprocess.run([sys.executable, "scanner_tennis.py"], check=True)
@@ -83,6 +93,10 @@ n_ops = 0
 if not df_storico.empty:
     if 'Profitto_Reale' not in df_storico.columns: df_storico['Profitto_Reale'] = 0.0
     if 'Stake_Euro' not in df_storico.columns: df_storico['Stake_Euro'] = 0.0
+    # Conversione sicura KPI
+    df_storico['Profitto_Reale'] = pd.to_numeric(df_storico['Profitto_Reale'], errors='coerce').fillna(0.0)
+    df_storico['Stake_Euro'] = pd.to_numeric(df_storico['Stake_Euro'], errors='coerce').fillna(0.0)
+    
     profitto_totale = df_storico['Profitto_Reale'].sum()
     volume_giocato = df_storico['Stake_Euro'].sum()
     n_ops = len(df_storico)
@@ -98,22 +112,12 @@ saldo_attuale = saldo_iniziale + profitto_totale
 with st.sidebar:
     st.markdown('<div class="header-logo"><i class="ri-crosshair-2-line highlight"></i> SNIPER<span class="highlight">SUITE</span></div>', unsafe_allow_html=True)
     
-    # GESTIONE STATO MENU PER EVITARE RESET
     options = ["◈ DASHBOARD", "◎ RADAR", "▤ REGISTRO"]
+    if "nav_selection" not in st.session_state: st.session_state.nav_selection = options[0]
     
-    # Se non esiste lo stato, lo inizializziamo
-    if "nav_selection" not in st.session_state:
-        st.session_state.nav_selection = options[0]
-    
-    # Callback per aggiornare lo stato quando clicchi
-    def on_menu_change():
-        st.session_state.nav_selection = st.session_state.menu_key
-        
-    # Trova l'indice corretto
-    try:
-        ix = options.index(st.session_state.nav_selection)
-    except:
-        ix = 0
+    def on_menu_change(): st.session_state.nav_selection = st.session_state.menu_key
+    try: ix = options.index(st.session_state.nav_selection)
+    except: ix = 0
         
     menu = st.radio("MENU", options, index=ix, key="menu_key", on_change=on_menu_change, label_visibility="collapsed")
     
@@ -178,20 +182,25 @@ elif menu == "◎ RADAR":
     with b_col: 
         st.write("")
         if st.button("SCAN NOW", use_container_width=True):
-            # Impostiamo forzatamente lo stato su RADAR prima di rilanciare
             st.session_state.nav_selection = "◎ RADAR"
             with st.spinner("Analyzing Market Value..."):
                 run_scanner()
                 st.rerun()
 
     if not df_pending.empty:
-        # Preparazione colonne per Value Betting
+        # Preparazione colonne
         if "Abbinata" not in df_pending.columns: df_pending.insert(0, "Abbinata", False)
-        # Fallback sicuro: se Quota_Betfair non esiste (vecchio file), usa 0.0 per non crashare
         if "Quota_Betfair" not in df_pending.columns: df_pending["Quota_Betfair"] = 0.0
         if "Quota_Reale_Presa" not in df_pending.columns: df_pending["Quota_Reale_Presa"] = df_pending["Quota_Betfair"]
 
-        # TABELLA VALUE BET
+        # --- FIX TIPO DATI (CRITICAL FIX) ---
+        # Forziamo le colonne ad essere numeri, altrimenti st.data_editor crasha
+        cols_num = ["Quota_Betfair", "Quota_Reale_Pinna", "Valore_%", "Stake_Euro", "Quota_Reale_Presa"]
+        for c in cols_num:
+            if c in df_pending.columns:
+                df_pending[c] = pd.to_numeric(df_pending[c], errors='coerce').fillna(0.0)
+
+        # TABELLA
         edited_df = st.data_editor(
             df_pending,
             column_config={
@@ -226,7 +235,6 @@ elif menu == "◎ RADAR":
                     remain = edited_df[edited_df["Abbinata"] == False]
                     cols_p = [c for c in remain.columns if c not in ["Abbinata", "Quota_Reale_Presa"]]
                     save_data(remain[cols_p], config.FILE_PENDING)
-                    
                     st.rerun()
         with c2:
             if st.button("CLEAR"):
@@ -242,8 +250,14 @@ elif menu == "◎ RADAR":
 elif menu == "▤ REGISTRO":
     st.markdown('<h3><i class="ri-file-list-2-line"></i> EXECUTION LOG</h3>', unsafe_allow_html=True)
     if not df_storico.empty:
+        # Conversione sicura anche qui per evitare errori di visualizzazione
+        df_show = df_storico.copy()
+        if "Stake_Euro" in df_show.columns: df_show["Stake_Euro"] = pd.to_numeric(df_show["Stake_Euro"], errors='coerce').fillna(0)
+        if "Profitto_Reale" in df_show.columns: df_show["Profitto_Reale"] = pd.to_numeric(df_show["Profitto_Reale"], errors='coerce').fillna(0)
+        if "Valore_%" in df_show.columns: df_show["Valore_%"] = pd.to_numeric(df_show["Valore_%"], errors='coerce').fillna(0)
+
         st.dataframe(
-            df_storico, 
+            df_show, 
             use_container_width=True, 
             hide_index=True,
             column_config={
