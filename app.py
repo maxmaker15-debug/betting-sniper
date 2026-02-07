@@ -43,9 +43,38 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --- FUNZIONI BACKEND ---
+
+def enforce_schema(df, db_type='pending'):
+    """
+    Forza i tipi di dati corretti per evitare crash di Streamlit.
+    """
+    try:
+        # Colonne numeriche critiche che causano crash se sono Object
+        numeric_cols_float = ["Quota_Betfair", "Quota_Reale_Pinna", "Valore_%", "Quota_Reale_Presa", "Profitto_Reale"]
+        numeric_cols_int = ["Stake_Euro"]
+        
+        for col in numeric_cols_float:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0).astype(float)
+        
+        for col in numeric_cols_int:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0).astype(int)
+                
+        # Boolean check
+        if "Abbinata" in df.columns:
+            df["Abbinata"] = df["Abbinata"].astype(bool)
+            
+        return df
+    except Exception as e:
+        st.error(f"Schema Error: {e}")
+        return pd.DataFrame()
+
 def load_data(filename):
     if not os.path.exists(filename): return pd.DataFrame()
-    try: return pd.read_csv(filename)
+    try: 
+        df = pd.read_csv(filename)
+        return enforce_schema(df)
     except: return pd.DataFrame()
 
 def save_data(df, filename):
@@ -53,13 +82,11 @@ def save_data(df, filename):
 
 def run_scanner():
     log_scan = []
-    # 1. Calcio
     if os.path.exists("scanner_calcio.py"):
         try:
             subprocess.run([sys.executable, "scanner_calcio.py"], check=True)
             log_scan.append("Calcio: OK")
         except: log_scan.append("Calcio: Error")
-    # 2. Tennis
     if os.path.exists("scanner_tennis.py"):
         try:
             subprocess.run([sys.executable, "scanner_tennis.py"], check=True)
@@ -83,6 +110,7 @@ n_ops = 0
 if not df_storico.empty:
     if 'Profitto_Reale' not in df_storico.columns: df_storico['Profitto_Reale'] = 0.0
     if 'Stake_Euro' not in df_storico.columns: df_storico['Stake_Euro'] = 0.0
+    
     profitto_totale = df_storico['Profitto_Reale'].sum()
     volume_giocato = df_storico['Stake_Euro'].sum()
     n_ops = len(df_storico)
@@ -93,27 +121,17 @@ if not df_storico.empty:
 saldo_attuale = saldo_iniziale + profitto_totale
 
 # ==============================================================================
-# SIDEBAR (CON NAVIGAZIONE PERSISTENTE)
+# SIDEBAR (PERSISTENT STATE)
 # ==============================================================================
 with st.sidebar:
     st.markdown('<div class="header-logo"><i class="ri-crosshair-2-line highlight"></i> SNIPER<span class="highlight">SUITE</span></div>', unsafe_allow_html=True)
     
-    # GESTIONE STATO MENU PER EVITARE RESET
     options = ["◈ DASHBOARD", "◎ RADAR", "▤ REGISTRO"]
+    if "nav_selection" not in st.session_state: st.session_state.nav_selection = options[0]
     
-    # Se non esiste lo stato, lo inizializziamo
-    if "nav_selection" not in st.session_state:
-        st.session_state.nav_selection = options[0]
-    
-    # Callback per aggiornare lo stato quando clicchi
-    def on_menu_change():
-        st.session_state.nav_selection = st.session_state.menu_key
-        
-    # Trova l'indice corretto
-    try:
-        ix = options.index(st.session_state.nav_selection)
-    except:
-        ix = 0
+    def on_menu_change(): st.session_state.nav_selection = st.session_state.menu_key
+    try: ix = options.index(st.session_state.nav_selection)
+    except: ix = 0
         
     menu = st.radio("MENU", options, index=ix, key="menu_key", on_change=on_menu_change, label_visibility="collapsed")
     
@@ -178,61 +196,70 @@ elif menu == "◎ RADAR":
     with b_col: 
         st.write("")
         if st.button("SCAN NOW", use_container_width=True):
-            # Impostiamo forzatamente lo stato su RADAR prima di rilanciare
             st.session_state.nav_selection = "◎ RADAR"
             with st.spinner("Analyzing Market Value..."):
                 run_scanner()
                 st.rerun()
 
+    # LOGICA DI SICUREZZA PER DF_PENDING
     if not df_pending.empty:
-        # Preparazione colonne per Value Betting
+        # 1. Verifica esistenza colonne base
         if "Abbinata" not in df_pending.columns: df_pending.insert(0, "Abbinata", False)
-        # Fallback sicuro: se Quota_Betfair non esiste (vecchio file), usa 0.0 per non crashare
         if "Quota_Betfair" not in df_pending.columns: df_pending["Quota_Betfair"] = 0.0
         if "Quota_Reale_Presa" not in df_pending.columns: df_pending["Quota_Reale_Presa"] = df_pending["Quota_Betfair"]
+        
+        # 2. RI-APPUNTO DELLO SCHEMA (Doppia sicurezza prima del render)
+        df_pending = enforce_schema(df_pending)
 
-        # TABELLA VALUE BET
-        edited_df = st.data_editor(
-            df_pending,
-            column_config={
-                "Abbinata": st.column_config.CheckboxColumn("✅", width="small"),
-                "Match": st.column_config.TextColumn("EVENTO", width="medium"),
-                "Selezione": st.column_config.TextColumn("BET", width="small"),
-                "Quota_Betfair": st.column_config.NumberColumn("Q.BF (Buy)", format="%.2f", disabled=True),
-                "Quota_Reale_Pinna": st.column_config.NumberColumn("REAL (Pinna)", format="%.2f", disabled=True),
-                "Valore_%": st.column_config.ProgressColumn("EV %", min_value=-5, max_value=10, format="%.2f%%"),
-                "Stake_Euro": st.column_config.NumberColumn("STAKE", format="%d €"),
-                "Quota_Reale_Presa": st.column_config.NumberColumn("✏️ Q.PRESA", format="%.2f", step=0.01),
-                "Stato_Trade": st.column_config.TextColumn("STATUS", width="small"),
-            },
-            column_order=["Abbinata", "Match", "Selezione", "Quota_Betfair", "Quota_Reale_Pinna", "Valore_%", "Stake_Euro", "Quota_Reale_Presa", "Stato_Trade"],
-            hide_index=True,
-            use_container_width=True
-        )
+        # 3. RENDER TABELLA
+        try:
+            edited_df = st.data_editor(
+                df_pending,
+                column_config={
+                    "Abbinata": st.column_config.CheckboxColumn("✅", width="small"),
+                    "Match": st.column_config.TextColumn("EVENTO", width="medium"),
+                    "Selezione": st.column_config.TextColumn("BET", width="small"),
+                    "Quota_Betfair": st.column_config.NumberColumn("Q.BF (Buy)", format="%.2f", disabled=True),
+                    "Quota_Reale_Pinna": st.column_config.NumberColumn("REAL (Pinna)", format="%.2f", disabled=True),
+                    "Valore_%": st.column_config.ProgressColumn("EV %", min_value=-10, max_value=10, format="%.2f%%"),
+                    "Stake_Euro": st.column_config.NumberColumn("STAKE", format="%d €"),
+                    "Quota_Reale_Presa": st.column_config.NumberColumn("✏️ Q.PRESA", format="%.2f", step=0.01),
+                    "Stato_Trade": st.column_config.TextColumn("STATUS", width="small"),
+                },
+                column_order=["Abbinata", "Match", "Selezione", "Quota_Betfair", "Quota_Reale_Pinna", "Valore_%", "Stake_Euro", "Quota_Reale_Presa", "Stato_Trade"],
+                hide_index=True,
+                use_container_width=True
+            )
 
-        c1, c2 = st.columns([1, 5])
-        with c1:
-            if st.button("CONFIRM TRADE"):
-                to_move = edited_df[edited_df["Abbinata"] == True].copy()
-                if not to_move.empty:
-                    to_move["Quota_Ingresso"] = to_move["Quota_Reale_Presa"]
-                    to_move["Esito_Finale"] = "APERTA"
-                    to_move["Profitto_Reale"] = 0.0
-                    
-                    df_final = pd.concat([df_storico, to_move], ignore_index=True)
-                    cols_s = [c for c in df_final.columns if c not in ["Abbinata", "Quota_Reale_Presa"]]
-                    save_data(df_final[cols_s], config.FILE_STORICO)
-                    
-                    remain = edited_df[edited_df["Abbinata"] == False]
-                    cols_p = [c for c in remain.columns if c not in ["Abbinata", "Quota_Reale_Presa"]]
-                    save_data(remain[cols_p], config.FILE_PENDING)
-                    
+            c1, c2 = st.columns([1, 5])
+            with c1:
+                if st.button("CONFIRM TRADE"):
+                    to_move = edited_df[edited_df["Abbinata"] == True].copy()
+                    if not to_move.empty:
+                        to_move["Quota_Ingresso"] = to_move["Quota_Reale_Presa"]
+                        to_move["Esito_Finale"] = "APERTA"
+                        to_move["Profitto_Reale"] = 0.0
+                        
+                        df_final = pd.concat([df_storico, to_move], ignore_index=True)
+                        cols_s = [c for c in df_final.columns if c not in ["Abbinata", "Quota_Reale_Presa"]]
+                        save_data(df_final[cols_s], config.FILE_STORICO)
+                        
+                        remain = edited_df[edited_df["Abbinata"] == False]
+                        cols_p = [c for c in remain.columns if c not in ["Abbinata", "Quota_Reale_Presa"]]
+                        save_data(remain[cols_p], config.FILE_PENDING)
+                        st.rerun()
+            with c2:
+                if st.button("CLEAR"):
+                    cols_c = [c for c in df_pending.columns if c not in ["Abbinata", "Quota_Reale_Presa"]]
+                    save_data(pd.DataFrame(columns=cols_c), config.FILE_PENDING)
                     st.rerun()
-        with c2:
-            if st.button("CLEAR"):
-                cols_c = [c for c in df_pending.columns if c not in ["Abbinata", "Quota_Reale_Presa"]]
-                save_data(pd.DataFrame(columns=cols_c), config.FILE_PENDING)
+
+        except Exception as e:
+            st.error(f"Errore Visualizzazione Tabella: {e}")
+            if st.button("RESET DATABASE DI EMERGENZA"):
+                save_data(pd.DataFrame(), config.FILE_PENDING)
                 st.rerun()
+
     else:
         st.info("No signals found. Press SCAN NOW.")
 
@@ -242,8 +269,11 @@ elif menu == "◎ RADAR":
 elif menu == "▤ REGISTRO":
     st.markdown('<h3><i class="ri-file-list-2-line"></i> EXECUTION LOG</h3>', unsafe_allow_html=True)
     if not df_storico.empty:
+        # Enforce anche qui
+        df_show = enforce_schema(df_storico.copy())
+
         st.dataframe(
-            df_storico, 
+            df_show, 
             use_container_width=True, 
             hide_index=True,
             column_config={
