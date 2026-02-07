@@ -2,227 +2,140 @@ import requests, csv, os, config, pandas as pd
 from datetime import datetime, timezone
 import dateutil.parser
 
-# --- ⚠️ CONFIGURAZIONE DIRETTA ---
-API_KEY = "78f03ed8354c09f7ac591fe7e105deda"
+# --- CONFIGURAZIONE ---
+API_KEY = config.API_KEY
 TELEGRAM_TOKEN = "8145327630:AAHJC6vDjvGUyPT0pKw63fyW53hTl_F873U"
 TELEGRAM_CHAT_ID = "5562163433"
 
-# --- PARAMETRI TATTICI ---
-REGIONS = 'eu'
-MARKETS = 'h2h'
-ODDS_FORMAT = 'decimal'
-MAX_ODDS_CAP = 5.00 # 🛑 Protezione Underdog: Ignora quote > 5.00
+# --- WHITELIST TENNIS (Solo ATP/WTA Major per liquidità) ---
+COMPETIZIONI_ELITE = [
+    'tennis_atp_australian_open', 'tennis_wta_australian_open',
+    'tennis_atp_french_open', 'tennis_wta_french_open',
+    'tennis_atp_wimbledon', 'tennis_wta_wimbledon',
+    'tennis_atp_us_open', 'tennis_wta_us_open',
+    'tennis_atp_masters_1000', 'tennis_wta_1000'
+]
+
+# --- PARAMETRI FILTRO ---
+MIN_ODDS = 1.70
+MAX_ODDS = 3.50
+MIN_EV = 1.0 
 
 def send_telegram(msg):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    try: 
-        requests.get(url, params={"chat_id": TELEGRAM_CHAT_ID, "text": msg})
+    try: requests.get(url, params={"chat_id": TELEGRAM_CHAT_ID, "text": msg})
     except: pass
 
 def converti_orario(iso_date):
     try: return dateutil.parser.parse(iso_date).strftime("%Y-%m-%d %H:%M")
     except: return iso_date
 
-def calcola_quota_target(prob_reale, roi=0.02):
+def calcola_quota_reale_pinnacle(odds_dict):
     try:
-        fair_odds = 1 / prob_reale
-        target_netto = fair_odds * (1 + roi)
-        target_lordo = 1 + ((target_netto - 1) / (1 - config.COMMISSIONE_BETFAIR))
-        return round(target_lordo, 2)
+        inverses = []
+        outcomes = []
+        for name, price in odds_dict.items():
+            inverses.append(1/price)
+            outcomes.append(name)
+        
+        margin = sum(inverses)
+        
+        real_probs = {}
+        for i, name in enumerate(outcomes):
+            true_prob = inverses[i] / margin
+            real_probs[name] = true_prob
+            
+        return real_probs
+    except: return {}
+
+def calcola_stake_value(ev_perc, quota):
+    try:
+        stake = 0
+        if ev_perc < 2.0: stake = 50 
+        elif ev_perc < 5.0: stake = 100 
+        else: stake = config.STAKE_MASSIMO 
+            
+        if stake > config.STAKE_MASSIMO: stake = config.STAKE_MASSIMO
+        return int(stake)
     except: return 0
-
-def calcola_stake(valore_perc, quota_netta):
-    try:
-        if quota_netta <= 1: return 0
-        kelly_perc = (valore_perc / 100) / (quota_netta - 1)
-        # Usa il parametro KELLY_FRACTION dal file config.py (ora impostato a 1.0)
-        stake_calcolato = config.BANKROLL_TOTALE * config.KELLY_FRACTION * kelly_perc
-        
-        # Applica i limiti (Hard Cap)
-        if stake_calcolato > config.STAKE_MASSIMO: stake_calcolato = config.STAKE_MASSIMO
-        if stake_calcolato < 0: stake_calcolato = 0
-        return int(stake_calcolato)
-    except: return 0
-
-def calcola_target_scalping(quota_ingresso):
-    target = quota_ingresso - (quota_ingresso * 0.025) 
-    if target < 1.01: target = 1.01
-    return round(target, 2)
-
-def check_watchdog(event_name, current_pinnacle_odds, trade_row):
-    try:
-        ingresso_betfair = float(trade_row['Quota_Ingresso'])
-        pinna_inziale = float(trade_row['Pinnacle_Iniziale'])
-        sel = trade_row['Selezione']
-        
-        quota_pinna_now = 0
-        if sel in current_pinnacle_odds:
-            quota_pinna_now = current_pinnacle_odds[sel]
-        else:
-            if 'Home' in str(sel) or trade_row['Match'].split(' vs ')[0] in str(sel): quota_pinna_now = current_pinnacle_odds.get('Home', 0)
-            elif 'Away' in str(sel) or trade_row['Match'].split(' vs ')[1] in str(sel): quota_pinna_now = current_pinnacle_odds.get('Away', 0)
-
-        if quota_pinna_now > 0:
-            if quota_pinna_now >= ingresso_betfair:
-                msg = f"🔴 ALLARME STOP LOSS: {event_name}\nLa quota Pinnacle ({quota_pinna_now}) ha superato il tuo ingresso ({ingresso_betfair})!\nChiudi subito."
-                send_telegram(msg)
-            elif quota_pinna_now > (pinna_inziale * 1.05):
-                msg = f"⚠️ WARNING DRIFT: {event_name}\nPinnacle si sta alzando: {pinna_inziale} ➡️ {quota_pinna_now}."
-                send_telegram(msg)
-    except: pass
-
-def analizza_tennis_sniper(pinnacle_odds, soft_odds):
-    try:
-        inv_1 = 1 / pinnacle_odds['Home']
-        inv_2 = 1 / pinnacle_odds['Away']
-        margin = inv_1 + inv_2
-        real_prob = {'Home': inv_1/margin, 'Away': inv_2/margin}
-    except: return None
-
-    migliore_opzione = None
-    miglior_valore = -100
-
-    for outcome, soft_price in soft_odds.items():
-        if outcome not in real_prob: continue
-        
-        # 🛡️ FILTRO QUOTE ALTE (Protezione Volatilità)
-        if soft_price > MAX_ODDS_CAP: continue
-
-        quota_reale_pinna = round(1 / real_prob[outcome], 2)
-        net_price = 1 + ((soft_price - 1) * (1 - config.COMMISSIONE_BETFAIR))
-        ev = (real_prob[outcome] * net_price) - 1
-        ev_perc = ev * 100
-        quota_req = calcola_quota_target(real_prob[outcome])
-
-        status = None
-        if ev_perc > config.SOGLIA_VALUE_TENNIS: status = "VALUE"
-        elif ev_perc > config.SOGLIA_SNIPER_TENNIS: status = "ATTESA"
-
-        if status:
-            if ev_perc > miglior_valore:
-                miglior_valore = ev_perc
-                migliore_opzione = {
-                    'sel': outcome, 
-                    'q_att': soft_price, 
-                    'q_req': quota_req, 
-                    'q_real': quota_reale_pinna,
-                    'val': round(ev_perc, 2), 
-                    'status': status
-                }
-    return migliore_opzione
 
 def scan_tennis():
-    print(f"--- 🚀 SCANSIONE TENNIS (V6 OPERATIVA) - {datetime.now()} ---")
+    print(f"--- 🎾 SCANSIONE TENNIS (V20 VALUE SNIPER) - {datetime.now()} ---")
     
-    header = ['Sport', 'Data_Scan', 'Orario_Match', 'Torneo', 'Match', 'Selezione', 'Bookmaker', 'Quota_Ingresso', 'Pinnacle_Iniziale', 'Target_Scalping', 'Quota_Sniper_Target', 'Valore_%', 'Stake_Euro', 'Stato_Trade', 'Esito_Finale', 'Profitto_Reale']
+    header = ['Sport', 'Data_Scan', 'Orario_Match', 'Torneo', 'Match', 'Selezione', 'Quota_Betfair', 'Quota_Reale_Pinna', 'Valore_%', 'Stake_Euro', 'Stato_Trade', 'Esito_Finale', 'Profitto_Reale']
     
-    open_trades = []
-    if os.path.exists(config.FILE_PENDING):
-        try:
-            df = pd.read_csv(config.FILE_PENDING)
-            if 'Stato_Trade' in df.columns:
-                open_trades = df[df['Stato_Trade'] == 'APERTO'].to_dict('records')
-        except: pass
-    else:
-        with open(config.FILE_PENDING, 'w', newline='', encoding='utf-8') as f:
-            csv.writer(f).writerow(header)
+    if not os.path.exists(config.FILE_PENDING):
+        with open(config.FILE_PENDING, 'w', newline='', encoding='utf-8') as f: csv.writer(f).writerow(header)
 
     try:
-        # Recupero lista sport (generico per prendere tutto ciò che è tennis)
         resp = requests.get('https://api.the-odds-api.com/v4/sports', params={'apiKey': API_KEY})
-        if resp.status_code != 200: return
+        tennis_leagues = [s for s in resp.json() if 'tennis' in s['key'] and ('atp' in s['key'] or 'wta' in s['key'])] # Filtro generico ATP/WTA
 
-        active_tennis = [s for s in resp.json() if 'tennis' in s['key'] and 'winner' not in s['key']]
-        
         now_utc = datetime.now(timezone.utc)
 
-        for torneo in active_tennis:
-            url = f'https://api.the-odds-api.com/v4/sports/{torneo["key"]}/odds'
-            resp = requests.get(url, params={'apiKey': API_KEY, 'regions': REGIONS, 'markets': MARKETS, 'oddsFormat': ODDS_FORMAT})
+        for league in tennis_leagues:
+            url = f'https://api.the-odds-api.com/v4/sports/{league["key"]}/odds'
+            resp = requests.get(url, params={'apiKey': API_KEY, 'regions': 'eu', 'markets': 'h2h', 'oddsFormat': 'decimal'})
             if resp.status_code != 200: continue
             
             events = resp.json()
             for event in events:
-                # 🛑 FILTRO ANTI-LIVE RIGOROSO
                 try:
-                    commence_time = dateutil.parser.parse(event['commence_time'])
-                    if commence_time <= now_utc: 
-                        continue # Salta se iniziata
+                    if dateutil.parser.parse(event['commence_time']) <= now_utc: continue 
                 except: continue
 
                 home, away = event['home_team'], event['away_team']
                 match_name = f"{home} vs {away}"
                 
-                # Parsing Pinnacle
-                pinna_raw = {}
-                p_map = {}
+                pinna_odds_raw = {}
+                betfair_odds_raw = {}
+                
                 for b in event['bookmakers']:
                     if b['key'] == 'pinnacle':
-                        for m in b['markets']:
-                             if m['key']=='h2h':
-                                for o in m['outcomes']: pinna_raw[o['name']] = o['price']
-                if len(pinna_raw)>=2:
-                    try: p_map = {'Home': pinna_raw[home], 'Away': pinna_raw[away]}
-                    except: pass
-                
-                # Watchdog Check
-                if p_map:
-                    for trade in open_trades:
-                        if trade['Match'] == match_name:
-                            check_watchdog(match_name, p_map, trade)
-
-                if len(pinna_raw)<2: continue
-
-                # Parsing Betfair
-                for b in event['bookmakers']:
+                        for o in b['markets'][0]['outcomes']: pinna_odds_raw[o['name']] = o['price']
                     if 'betfair' in b['title'].lower():
-                        soft = {}
-                        for m in b['markets']:
-                             if m['key']=='h2h':
-                                for o in m['outcomes']:
-                                    if o['name']==home: soft['Home']=o['price']
-                                    elif o['name']==away: soft['Away']=o['price']
-                        if len(soft)==2:
-                            res = analizza_tennis_sniper(p_map, soft)
-                            if res:
-                                gia_presente = False
-                                for t in open_trades:
-                                    if t['Match'] == match_name and t['Selezione'] == res['sel']: gia_presente = True
-                                
-                                if not gia_presente:
-                                    print(f"🔥 OCCASIONE TENNIS: {match_name}")
-                                    sel_name = home if res['sel']=='Home' else away
-                                    label_status = f"🟢 {res['status']}" if res['status']=="VALUE" else f"🟡 {res['status']}"
-                                    
-                                    # Calcolo Stake
-                                    stake_euro = 0
-                                    quota_sniper = 0
-                                    q_scalp = 0
-                                    
-                                    if res['status'] == "VALUE":
-                                        stake_euro = calcola_stake(res['val'], res['q_att'])
-                                        q_scalp = calcola_target_scalping(res['q_att'])
-                                    else:
-                                        quota_sniper = res['q_req']
-                                        stake_euro = calcola_stake(res['val'], quota_sniper)
-                                        q_scalp = calcola_target_scalping(quota_sniper)
-                                    
-                                    # Scrittura CSV
-                                    with open(config.FILE_PENDING, 'a', newline='', encoding='utf-8') as f:
-                                        csv.writer(f).writerow(['TENNIS', datetime.now().strftime("%Y-%m-%d %H:%M"), converti_orario(event.get('commence_time', 'N/A')), torneo['title'], f"{home} vs {away}", sel_name, b['title'], res['q_att'], res['q_real'], q_scalp, quota_sniper, f"{label_status} {res['val']}%", stake_euro, 'APERTO', '', ''])
-                                    
-                                    # Notifica Telegram
-                                    emoji = "🟢" if res['status'] == "VALUE" else "🟡"
-                                    msg_stake_text = ""
-                                    if res['status'] == "VALUE":
-                                        msg_stake_text = f"💰 STAKE: {stake_euro}€"
-                                    else:
-                                        msg_stake_text = f"⏳ ATTENDI {quota_sniper}\n(Stake Previsto: {stake_euro}€)"
+                        for o in b['markets'][0]['outcomes']: betfair_odds_raw[o['name']] = o['price']
+                
+                if not pinna_odds_raw or not betfair_odds_raw: continue
 
-                                    msg = f"{emoji} TENNIS: {sel_name}\n🎾 {home} vs {away}\n🔹 ORA: {res['q_att']}\n{msg_stake_text}\n🎯 TARGET EXIT: {q_scalp}\n📉 PINNACLE: {res['q_real']}"
-                                    send_telegram(msg)
+                # Calcolo Reale
+                real_probs = calcola_quota_reale_pinnacle(pinna_odds_raw)
+                if not real_probs: continue
+
+                for sel_name, bf_price in betfair_odds_raw.items():
+                    if sel_name not in real_probs: continue
+                    
+                    # FILTRO RANGE (1.70 - 3.50)
+                    if not (MIN_ODDS <= bf_price <= MAX_ODDS): continue
+                    
+                    bf_netto = 1 + ((bf_price - 1) * (1 - config.COMMISSIONE_BETFAIR))
+                    true_prob = real_probs[sel_name]
+                    fair_odds = 1 / true_prob
+                    
+                    ev = (true_prob * bf_netto) - 1
+                    ev_perc = round(ev * 100, 2)
+                    
+                    if ev_perc >= MIN_EV:
+                        print(f"🔥 VALUE TENNIS: {match_name} -> {sel_name} (EV {ev_perc}%)")
+                        
+                        stake = calcola_stake_value(ev_perc, bf_price)
+                        
+                        with open(config.FILE_PENDING, 'a', newline='', encoding='utf-8') as f:
+                            csv.writer(f).writerow(['TENNIS', datetime.now().strftime("%Y-%m-%d %H:%M"), converti_orario(event['commence_time']), league['title'], match_name, sel_name, bf_price, round(fair_odds, 2), f"{ev_perc}", stake, 'APERTO', '', ''])
+                        
+                        msg = (
+                            f"🎾 VALUE BET TENNIS: {sel_name}\n"
+                            f"🏟️ {match_name}\n"
+                            f"🏆 {league['title']}\n"
+                            f"📊 QUOTA BETFAIR: {bf_price}\n"
+                            f"🎯 QUOTA REALE: {round(fair_odds, 2)}\n"
+                            f"📈 EV: +{ev_perc}%\n"
+                            f"💰 STAKE: {stake}€\n"
+                            f"⚠️ Strategia: Buy & Hold"
+                        )
+                        send_telegram(msg)
+
     except Exception as e: print(f"Errore Tennis: {e}")
-    print("--- SCANSIONE TENNIS COMPLETATA ---")
 
 if __name__ == "__main__":
     scan_tennis()
