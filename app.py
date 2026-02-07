@@ -79,4 +79,71 @@ st.markdown("""
 
         /* HEADER LOGO */
         .header-logo {
-            font-size: 1
+            font-size: 1.2rem;
+            font-weight: 800;
+            color: #fff;
+            border-bottom: 1px solid #222;
+            padding-bottom: 10px;
+            margin-bottom: 15px;
+            letter-spacing: 1px;
+        }
+        .highlight { color: #00E096; }
+    </style>
+""", unsafe_allow_html=True)
+
+# --- FUNZIONI BACKEND ---
+def load_data(filename):
+    if not os.path.exists(filename): return pd.DataFrame()
+    try: return pd.read_csv(filename)
+    except: return pd.DataFrame()
+
+def save_data(df, filename):
+    df.to_csv(filename, index=False)
+
+def run_scanner():
+    log_scan = []
+    # 1. Calcio
+    if os.path.exists("scanner_calcio.py"):
+        try:
+            subprocess.run([sys.executable, "scanner_calcio.py"], check=True)
+            log_scan.append("Calcio: OK")
+        except: log_scan.append("Calcio: Error")
+    # 2. Tennis
+    if os.path.exists("scanner_tennis.py"):
+        try:
+            subprocess.run([sys.executable, "scanner_tennis.py"], check=True)
+            log_scan.append("Tennis: OK")
+        except: log_scan.append("Tennis: Error")
+    return log_scan
+
+# --- CARICAMENTO ---
+df_storico = load_data(config.FILE_STORICO)
+df_pending = load_data(config.FILE_PENDING)
+
+# --- KPI ENGINE ---
+saldo_iniziale = config.BANKROLL_TOTALE
+profitto_totale = 0.0
+volume_giocato = 0.0
+roi = 0.0
+roe = 0.0
+rotazione = 0.0
+n_ops = 0
+
+if not df_storico.empty:
+    if 'Profitto_Reale' not in df_storico.columns: df_storico['Profitto_Reale'] = 0.0
+    if 'Stake_Euro' not in df_storico.columns: df_storico['Stake_Euro'] = 0.0
+    profitto_totale = df_storico['Profitto_Reale'].sum()
+    volume_giocato = df_storico['Stake_Euro'].sum()
+    n_ops = len(df_storico)
+    if volume_giocato > 0: roi = (profitto_totale / volume_giocato) * 100
+    if saldo_iniziale > 0: roe = (profitto_totale / saldo_iniziale) * 100
+    if saldo_iniziale > 0: rotazione = volume_giocato / saldo_iniziale
+
+saldo_attuale = saldo_iniziale + profitto_totale
+
+# ==============================================================================
+# SIDEBAR
+# ==============================================================================
+with st.sidebar:
+    st.markdown('<div class="header-logo"><i class="ri-crosshair-2-line highlight"></i> SNIPER<span class="highlight">SUITE</span></div>', unsafe_allow_html=True)
+    menu = st.radio("MENU
