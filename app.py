@@ -42,28 +42,42 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- FUNZIONI BACKEND ---
+# --- FUNZIONI BACKEND INTELLIGENTI ---
+
+def clean_currency(x):
+    """Pulisce stringhe numeriche da formati italiani o sporchi"""
+    if isinstance(x, str):
+        # Sostituisce virgola con punto
+        x = x.replace(',', '.')
+        # Rimuove simboli valuta o spazi
+        x = x.replace('€', '').replace('%', '').strip()
+    return x
 
 def enforce_schema(df):
     """
-    Forza i tipi di dati corretti (Numeri e Testo) per evitare crash di Streamlit.
+    Forza i tipi di dati corretti gestendo il formato italiano.
     """
     try:
-        # 1. FIX NUMERI (Float)
+        if df.empty: return df
+
+        # COLONNE NUMERICHE (Float)
         numeric_cols_float = ["Quota_Betfair", "Quota_Reale_Pinna", "Valore_%", "Quota_Reale_Presa", "Profitto_Reale"]
         for col in numeric_cols_float:
             if col in df.columns:
+                # Applica pulizia virgola/punto prima di convertire
+                df[col] = df[col].apply(clean_currency)
                 df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0).astype(float)
         
-        # 2. FIX INTERI (Int)
+        # COLONNE INTERE (Int)
         if "Stake_Euro" in df.columns:
+            df["Stake_Euro"] = df["Stake_Euro"].apply(clean_currency)
             df["Stake_Euro"] = pd.to_numeric(df["Stake_Euro"], errors='coerce').fillna(0).astype(int)
             
-        # 3. FIX BOOLEANI
+        # BOOLEANI
         if "Abbinata" in df.columns:
             df["Abbinata"] = df["Abbinata"].astype(bool)
 
-        # 4. FIX TESTO (Importante: evita che i NaN vengano letti come float)
+        # TESTO (Evita NaN)
         text_cols = ["Sport", "Torneo", "Match", "Selezione", "Stato_Trade", "Esito_Finale"]
         for col in text_cols:
             if col in df.columns:
@@ -76,12 +90,15 @@ def enforce_schema(df):
 
 def load_data(filename):
     if not os.path.exists(filename): return pd.DataFrame()
-    try: 
-        df = pd.read_csv(filename)
+    try:
+        # Tenta lettura intelligente del separatore (virgola o punto e virgola)
+        df = pd.read_csv(filename, sep=None, engine='python')
         return enforce_schema(df)
-    except: return pd.DataFrame()
+    except: 
+        return pd.DataFrame()
 
 def save_data(df, filename):
+    # Salviamo sempre in formato standard (virgola e punto) per consistenza
     df.to_csv(filename, index=False)
 
 def run_scanner():
@@ -112,7 +129,6 @@ rotazione = 0.0
 n_ops = 0
 
 if not df_storico.empty:
-    # Ricalcolo KPI sicuro
     profitto_totale = df_storico['Profitto_Reale'].sum()
     volume_giocato = df_storico['Stake_Euro'].sum()
     n_ops = len(df_storico)
@@ -123,7 +139,7 @@ if not df_storico.empty:
 saldo_attuale = saldo_iniziale + profitto_totale
 
 # ==============================================================================
-# SIDEBAR (PERSISTENT STATE)
+# SIDEBAR
 # ==============================================================================
 with st.sidebar:
     st.markdown('<div class="header-logo"><i class="ri-crosshair-2-line highlight"></i> SNIPER<span class="highlight">SUITE</span></div>', unsafe_allow_html=True)
@@ -203,18 +219,16 @@ elif menu == "◎ RADAR":
                 run_scanner()
                 st.rerun()
 
-    # LOGICA DI SICUREZZA PER DF_PENDING
     if not df_pending.empty:
-        # 1. Verifica esistenza colonne base
+        # Setup Colonne
         if "Abbinata" not in df_pending.columns: df_pending.insert(0, "Abbinata", False)
         if "Quota_Betfair" not in df_pending.columns: df_pending["Quota_Betfair"] = 0.0
         if "Quota_Reale_Presa" not in df_pending.columns: df_pending["Quota_Reale_Presa"] = df_pending["Quota_Betfair"]
         if "Stato_Trade" not in df_pending.columns: df_pending["Stato_Trade"] = ""
         
-        # 2. RI-APPUNTO DELLO SCHEMA (Type Safety)
+        # FIX FINALE: Ricarica schema con pulizia virgole
         df_pending = enforce_schema(df_pending)
 
-        # 3. RENDER TABELLA
         try:
             edited_df = st.data_editor(
                 df_pending,
@@ -258,7 +272,7 @@ elif menu == "◎ RADAR":
                     st.rerun()
 
         except Exception as e:
-            st.error(f"Errore Visualizzazione Tabella: {e}")
+            st.error(f"Errore Visualizzazione: {e}")
             if st.button("RESET DATABASE DI EMERGENZA"):
                 save_data(pd.DataFrame(), config.FILE_PENDING)
                 st.rerun()
