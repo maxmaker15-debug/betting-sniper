@@ -44,37 +44,21 @@ st.markdown("""
 
 # --- FUNZIONI BACKEND ---
 
-def clean_currency(x):
-    """Pulisce stringhe numeriche da formati italiani o sporchi"""
-    if isinstance(x, str):
-        x = x.replace(',', '.').replace('€', '').replace('%', '').strip()
-    return x
-
 def enforce_schema(df):
     """
-    Mappa le vecchie colonne sulle nuove e forza i tipi numerici.
+    Assicura che il DataFrame abbia i tipi corretti.
     """
     try:
         if df.empty: return df
         
-        # 0. MAPPING COLONNE VECCHIE -> NUOVE (FIX ZERO PROBLEM)
-        rename_map = {
-            "Quota_Ingresso": "Quota_Betfair",  # Vecchio nome -> Nuovo nome
-            "Target_Scalping": "Quota_Reale_Pinna" # Fallback se manca
-        }
-        df = df.rename(columns=rename_map)
-
-        # 1. FIX NUMERI (Float)
+        # 1. FIX NUMERI (Float) - Converte qualsiasi cosa in float o 0.0
         numeric_cols_float = ["Quota_Betfair", "Quota_Reale_Pinna", "Valore_%", "Quota_Reale_Presa", "Profitto_Reale"]
         for col in numeric_cols_float:
             if col in df.columns:
-                # Convertiamo in stringa, puliamo virgole, poi in numero
-                df[col] = df[col].astype(str).apply(clean_currency)
                 df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0).astype(float)
         
-        # 2. FIX INTERI (Int)
+        # 2. FIX INTERI (Int) - Converte Stake in intero
         if "Stake_Euro" in df.columns:
-            df["Stake_Euro"] = df["Stake_Euro"].astype(str).apply(clean_currency)
             df["Stake_Euro"] = pd.to_numeric(df["Stake_Euro"], errors='coerce').fillna(0).astype(int)
             
         # 3. FIX BOOLEANI
@@ -89,21 +73,32 @@ def enforce_schema(df):
 
         return df
     except Exception as e:
-        st.error(f"Schema Error: {e}")
         return pd.DataFrame()
 
 def load_data(filename):
     if not os.path.exists(filename): return pd.DataFrame()
     try:
-        df = pd.read_csv(filename, sep=None, engine='python')
+        # LETTURA RIGIDA: Separatore Virgola (,)
+        df = pd.read_csv(filename, sep=',')
         return enforce_schema(df)
-    except: return pd.DataFrame()
+    except: 
+        # Se fallisce, prova a resettare o ritorna vuoto
+        return pd.DataFrame()
 
 def save_data(df, filename):
-    df.to_csv(filename, index=False)
+    # SCRITTURA RIGIDA: Separatore Virgola (,)
+    df.to_csv(filename, index=False, sep=',')
 
 def run_scanner():
     log_scan = []
+    # Cancella il vecchio file prima di scansionare per evitare conflitti
+    if os.path.exists(config.FILE_PENDING):
+        try:
+            # Opzionale: Se vuoi mantenere lo storico dei "watch", non cancellare. 
+            # Ma per pulire il casino attuale, meglio cancellare se corrotto.
+            pass
+        except: pass
+
     if os.path.exists("scanner_calcio.py"):
         try:
             subprocess.run([sys.executable, "scanner_calcio.py"], check=True)
@@ -214,19 +209,21 @@ elif menu == "◎ RADAR":
         st.write("")
         if st.button("SCAN NOW", use_container_width=True):
             st.session_state.nav_selection = "◎ RADAR"
-            with st.spinner("Analyzing Market Value..."):
+            # RESET PREVENTIVO PER EVITARE DISALLINEAMENTI
+            if os.path.exists(config.FILE_PENDING):
+                os.remove(config.FILE_PENDING)
+            
+            with st.spinner("Scanning & Rebuilding..."):
                 run_scanner()
                 st.rerun()
 
     if not df_pending.empty:
         # Check colonne
         if "Abbinata" not in df_pending.columns: df_pending.insert(0, "Abbinata", False)
-        # Fallback sicuro
         if "Quota_Betfair" not in df_pending.columns: df_pending["Quota_Betfair"] = 0.0
         if "Quota_Reale_Presa" not in df_pending.columns: df_pending["Quota_Reale_Presa"] = df_pending["Quota_Betfair"]
         if "Stato_Trade" not in df_pending.columns: df_pending["Stato_Trade"] = ""
         
-        # FIX FINALE: Enforce Schema con rename
         df_pending = enforce_schema(df_pending)
 
         try:
@@ -266,8 +263,7 @@ elif menu == "◎ RADAR":
                         save_data(remain[cols_p], config.FILE_PENDING)
                         st.rerun()
             with c2:
-                # PULSANTE ROSSO PER FIXARE IL FILE CORROTTO
-                if st.button("RESET RADAR (Fix Zeros)"):
+                if st.button("RESET RADAR (Fix Columns)"):
                     save_data(pd.DataFrame(), config.FILE_PENDING)
                     st.rerun()
 
@@ -276,9 +272,8 @@ elif menu == "◎ RADAR":
             if st.button("RESET EMERGENZA"):
                 save_data(pd.DataFrame(), config.FILE_PENDING)
                 st.rerun()
-
     else:
-        st.info("No signals found. Press SCAN NOW.")
+        st.info("No signals. Press SCAN NOW.")
 
 # ==============================================================================
 # PAGINA 3: REGISTRO
