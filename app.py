@@ -8,21 +8,51 @@ import sys
 import config
 import time
 
-st.set_page_config(page_title="Sniper V45 Elite", page_icon="🦅", layout="wide", initial_sidebar_state="expanded")
+# --- CONFIGURAZIONE PAGINA ---
+st.set_page_config(
+    page_title="Sniper V47", 
+    page_icon="🦅", 
+    layout="wide", 
+    initial_sidebar_state="expanded"
+)
 
+# --- CSS CORRETTO (Titoli non tagliati) ---
 st.markdown("""
     <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
+        
+        /* Sfondo e Font */
         .stApp { background-color: #050505; font-family: 'Inter', sans-serif; color: #e0e0e0; }
-        .block-container { padding: 1.5rem 2rem !important; }
+        
+        /* FIX IMPAGINAZIONE: Aumentato padding superiore per non tagliare i titoli */
+        .block-container { padding-top: 4rem !important; padding-bottom: 3rem !important; }
+        
+        /* Contenitori Dati */
         div[data-testid="stMetric"], div[data-testid="stDataFrame"], div[data-testid="stPlotlyChart"] { 
             background-color: #111; border: 1px solid #333; border-radius: 8px; padding: 15px;
         }
-        h1, h2, h3 { color: #fff; font-weight: 800; }
-        .header-logo { font-size: 1.5rem; font-weight: 900; color: #fff; border-bottom: 1px solid #333; padding-bottom: 15px; margin-bottom: 20px; }
+        
+        /* Testi */
+        h1, h2, h3 { color: #fff; font-weight: 800; margin-bottom: 15px; }
+        
+        /* Logo Sidebar */
+        .header-logo { 
+            font-size: 1.5rem; 
+            font-weight: 900; 
+            color: #fff; 
+            border-bottom: 1px solid #333; 
+            padding-bottom: 20px; 
+            margin-bottom: 20px; 
+            text-align: center;
+        }
         .highlight { color: #00E096; }
-        .stButton button { background-color: #222; color: #fff; border: 1px solid #444; font-weight: 600; transition: all 0.2s; }
+        
+        /* Bottoni */
+        .stButton button { 
+            background-color: #222; color: #fff; border: 1px solid #444; font-weight: 600; 
+            width: 100%; transition: all 0.2s; 
+        }
         .stButton button:hover { border-color: #00E096; color: #00E096; transform: scale(1.02); }
     </style>
 """, unsafe_allow_html=True)
@@ -47,7 +77,11 @@ def enforce_schema(df):
         
         if "Trend" not in df.columns: df["Trend"] = "➖"
         if "Abbinata" not in df.columns: df["Abbinata"] = False
-            
+        
+        # Rigenera Rating se manca
+        if "Rating" not in df.columns and "EV_%" in df.columns:
+            df["Rating"] = df["EV_%"].apply(lambda x: "🟢 SUPER" if x > 2.5 else ("🟡 GOOD" if x > 1.0 else "⚪ WATCH"))
+
         return df
     except: return df
 
@@ -72,17 +106,25 @@ curr_bank = bankroll_start + profit
 
 # --- SIDEBAR ---
 with st.sidebar:
-    st.markdown('<div class="header-logo">🦅 SNIPER<span class="highlight">V45</span></div>', unsafe_allow_html=True)
-    menu = st.radio("", ["DASHBOARD", "RADAR ZONE", "REGISTRO"], label_visibility="collapsed")
+    st.markdown('<div class="header-logo">🦅 SNIPER<span class="highlight">V47</span></div>', unsafe_allow_html=True)
+    
+    # Menu rinominato correttamente
+    options = ["DASHBOARD", "RADAR ZONE", "REGISTRO"]
+    # Gestione stato per evitare reset navigazione
+    if "nav" not in st.session_state: st.session_state.nav = options[0]
+    
+    menu = st.radio("NAVIGAZIONE", options, label_visibility="collapsed", key="nav")
+    
     st.markdown("---")
     c1, c2 = st.columns(2)
     c1.metric("BANKROLL", f"{curr_bank:.0f}€")
     c2.metric("PROFIT", f"{profit:.2f}€", delta_color="normal")
-    if st.button("🔄 REBOOT"): st.rerun()
+    st.markdown("---")
+    if st.button("🔄 REBOOT SYSTEM"): st.rerun()
 
-# --- PAGINA 1: DASHBOARD ---
+# --- PAGINA 1: DASHBOARD (Titolo corretto) ---
 if menu == "DASHBOARD":
-    st.markdown("### 📊 MISSION CONTROL")
+    st.markdown("### 📊 DASHBOARD ANALYTICS") # Titolo ripristinato
     
     # KPI
     k1, k2, k3, k4 = st.columns(4)
@@ -96,8 +138,6 @@ if menu == "DASHBOARD":
         vol = df_hist['Stake_Ready'].sum() if 'Stake_Ready' in df_hist.columns else 0
         trades = len(df_hist)
         if vol > 0: roi = (profit / vol) * 100
-        
-        # Win Rate (Assumiamo Profitto > 0 come Win)
         wins = len(df_hist[df_hist['Profitto'] > 0])
         if trades > 0: win_rate = (wins / trades) * 100
 
@@ -111,7 +151,7 @@ if menu == "DASHBOARD":
     g1, g2 = st.columns([2, 1])
     
     with g1:
-        st.markdown("**📈 TREND CAPITALE**")
+        st.markdown("#### 📈 PERFORMANCE TREND")
         if not df_hist.empty:
             df_chart = df_hist.copy()
             df_chart['Progressivo'] = bankroll_start + df_chart['Profitto'].cumsum()
@@ -126,7 +166,7 @@ if menu == "DASHBOARD":
             st.info("In attesa di dati storici...")
 
     with g2:
-        st.markdown("**🍰 ASSET ALLOCATION**")
+        st.markdown("#### 🍰 ASSET ALLOCATION")
         if not df_hist.empty and 'Sport' in df_hist.columns:
             fig_pie = px.pie(df_hist, names='Sport', values='Stake_Ready', donut=0.6, template="plotly_dark")
             fig_pie.update_layout(paper_bgcolor='rgba(0,0,0,0)', showlegend=False, margin=dict(t=0, l=0, r=0, b=0), height=300)
@@ -145,10 +185,13 @@ elif menu == "RADAR ZONE":
             time.sleep(0.5)
             st.rerun()
 
-    # Logica Sicura Anti-Crash
     if not df_pend.empty and len(df_pend) > 0:
         
-        req_cols = ["Abbinata", "Match", "Selezione", "Q_Betfair", "Q_Target", "Trend", "EV_%", "Stake_Ready", "Stake_Limit", "Stato"]
+        # Check colonne e Rating
+        if "Rating" not in df_pend.columns and "EV_%" in df_pend.columns:
+            df_pend["Rating"] = df_pend["EV_%"].apply(lambda x: "🟢 SUPER" if x > 2.5 else ("🟡 GOOD" if x > 1.0 else "⚪ WATCH"))
+
+        req_cols = ["Abbinata", "Match", "Selezione", "Q_Betfair", "Rating", "Q_Target", "Trend", "EV_%", "Stake_Ready", "Stake_Limit"]
         for c in req_cols:
             if c not in df_pend.columns:
                 if c == "Abbinata": df_pend[c] = False
@@ -163,12 +206,12 @@ elif menu == "RADAR ZONE":
                 "Match": st.column_config.TextColumn("EVENTO", width="medium"),
                 "Selezione": st.column_config.TextColumn("BET", width="small"),
                 "Q_Betfair": st.column_config.NumberColumn("Q.BF", format="%.2f"),
-                "Q_Target": st.column_config.NumberColumn("🎯 TARGET", format="%.2f", help="Metti ordine Limit qui"),
+                "Rating": st.column_config.TextColumn("RATING", width="small"),
+                "Q_Target": st.column_config.NumberColumn("🎯 TARGET", format="%.2f"),
                 "Trend": st.column_config.TextColumn("TREND", width="small"),
                 "EV_%": st.column_config.ProgressColumn("VALUE", min_value=-5, max_value=15, format="%.2f%%"),
-                "Stake_Ready": st.column_config.NumberColumn("🔥 BUY", format="%d€"),
-                "Stake_Limit": st.column_config.NumberColumn("⏳ LIMIT", format="%d€"),
-                "Stato": st.column_config.TextColumn("STATUS", width="small"),
+                "Stake_Ready": st.column_config.NumberColumn("💶 STAKE (ORA)", format="%d€"),
+                "Stake_Limit": st.column_config.NumberColumn("🎯 STAKE (TARGET)", format="%d€"),
             },
             column_order=req_cols,
             hide_index=True,
