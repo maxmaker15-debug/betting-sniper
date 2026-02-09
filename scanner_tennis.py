@@ -2,7 +2,7 @@ import requests, csv, os, config, json
 from datetime import datetime, timezone
 import dateutil.parser
 
-# --- CONFIGURAZIONE COMMANDER V45 ---
+# --- CONFIGURAZIONE V46 ---
 API_KEY = config.API_KEY
 TELEGRAM_TOKEN = "8145327630:AAHJC6vDjvGUyPT0pKw63fyW53hTl_F873U"
 TELEGRAM_CHAT_ID = "5562163433"
@@ -11,9 +11,8 @@ FILE_MEMORY = "odds_memory_tennis.json"
 BANKROLL = 5000.0
 MAX_STAKE_PERC = 0.02
 MIN_STAKE_EURO = 10.0
-KELLY_FRACTION = 0.20
+KELLY_FRACTION = 0.30 # Tuned
 
-# TENNIS: Range leggermente più tollerante per le favorite
 MIN_ODDS = 1.60  
 MAX_ODDS = 3.50  
 MIN_EV_VALUE = 1.5
@@ -75,7 +74,7 @@ def calcola_target_buy(true_prob):
     except: return 0.0
 
 def scan_tennis():
-    print(f"--- 🎾 TENNIS V45 SNIPER - {datetime.now()} ---")
+    print(f"--- 🎾 TENNIS V46 TUNING - {datetime.now()} ---")
     
     header = ['Sport', 'Data', 'Ora', 'Torneo', 'Match', 'Selezione', 'Q_Betfair', 'Q_Target', 'Q_Reale', 'EV_%', 'Stake_Ready', 'Stake_Limit', 'Trend', 'Stato', 'Esito', 'Profitto']
     
@@ -176,7 +175,7 @@ def scan_tennis():
                         if match_best['st'] == "READY":
                             emoji = "🔥" if "DROP" in match_best['trend'] else "🟢"
                             msg = (
-                                f"{emoji} SNIPER V45: {match_best['sel']} {match_best['trend']}\n"
+                                f"{emoji} SNIPER V46: {match_best['sel']} {match_best['trend']}\n"
                                 f"🎾 {match_name}\n"
                                 f"💰 BF: {match_best['bf']} (Target: {match_best['target']})\n"
                                 f"📊 EV: +{match_best['ev']}%\n"
