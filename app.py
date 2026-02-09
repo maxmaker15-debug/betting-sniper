@@ -41,12 +41,206 @@ def clean_num(x):
 def enforce_schema(df):
     if df.empty: return df
     try:
-        rename = {"Quota_Betfair": "Q_Betfair", "Quota_Target": "Q_Target", "Quota_Reale_Pinna": "Q_Reale", "Valore_%": "EV_%", "Stake_Euro": "Stake_Ready"}
-        df = df.rename(columns=rename)
+        # Rinomina colonne vecchie se presenti
+        rename_map = {
+            "Quota_Betfair": "Q_Betfair", 
+            "Quota_Target": "Q_Target", 
+            "Quota_Reale_Pinna": "Q_Reale", 
+            "Valore_%": "EV_%", 
+            "Stake_Euro": "Stake_Ready"
+        }
+        df = df.rename(columns=rename_map)
         
+        # Conversione FLOAT sicura
         cols_float = ["Q_Betfair", "Q_Target", "Q_Reale", "EV_%", "Profitto"]
         for c in cols_float: 
-            if c in df.columns: df[c] = df[c].astype(str).apply(clean_num).apply(pd.to_numeric, errors='coerce').fillna(0.0)
+            if c in df.columns: 
+                df[c] = df[c].astype(str).apply(clean_num)
+                df[c] = pd.to_numeric(df[c], errors='coerce').fillna(0.0)
         
+        # Conversione INT sicura
         cols_int = ["Stake_Ready", "Stake_Limit"]
-        for c in
+        for c in cols_int:
+            if c in df.columns: 
+                df[c] = df[c].astype(str).apply(clean_num)
+                df[c] = pd.to_numeric(df[c], errors='coerce').fillna(0).astype(int)
+        
+        # Colonne mancanti
+        if "Trend" not in df.columns: df["Trend"] = "➖"
+        if "Abbinata" not in df.columns: df["Abbinata"] = False
+        
+        # Rating Visivo
+        if "Rating" not in df.columns and "EV_%" in df.columns:
+            df["Rating"] = df["EV_%"].apply(lambda x: "🟢 SUPER" if x > 2.5 else ("🟡 GOOD" if x > 1.0 else "⚪ WATCH"))
+
+        return df
+    except: return df
+
+def load_data(f):
+    if not os.path.exists(f): return pd.DataFrame()
+    try: return enforce_schema(pd.read_csv(f))
+    except: return pd.DataFrame()
+
+def save_data(df, f): df.to_csv(f, index=False)
+
+def run_scanner():
+    for s in ["scanner_calcio.py", "scanner_tennis.py"]:
+        if os.path.exists(s): subprocess.run([sys.executable, s], check=False)
+
+# --- CONFIGURAZIONE FILE ---
+# Usa getattr per evitare crash se config non ha le variabili
+FILE_STORICO = getattr(config, 'FILE_STORICO', 'registro_operazioni.csv')
+FILE_PENDING = getattr(config, 'FILE_PENDING', 'radar_pending.csv')
+
+# --- DATI ---
+df_hist = load_data(FILE_STORICO)
+df_pend = load_data(FILE_PENDING)
+
+bankroll_start = 5000.0
+profit = df_hist['Profitto'].sum() if not df_hist.empty else 0.0
+curr_bank = bankroll_start + profit
+
+# --- SIDEBAR ---
+with st.sidebar:
+    st.markdown('<div class="header-logo">🦅 SNIPER<span class="highlight">V53</span></div>', unsafe_allow_html=True)
+    if "nav" not in st.session_state: st.session_state.nav = "DASHBOARD"
+    menu = st.radio("NAVIGAZIONE", ["DASHBOARD", "RADAR ZONE", "REGISTRO"], label_visibility="collapsed")
+    st.markdown("---")
+    c1, c2 = st.columns(2)
+    c1.metric("BANKROLL", f"{curr_bank:.0f}€")
+    c2.metric("PROFIT", f"{profit:.2f}€", delta_color="normal")
+    st.markdown("---")
+    if st.button("🔄 REBOOT SYSTEM"): st.rerun()
+
+# --- PAGINA 1: DASHBOARD ---
+if menu == "DASHBOARD":
+    st.markdown("### 📊 DASHBOARD ANALYTICS")
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric("NET PROFIT", f"{profit:.2f} €")
+    
+    roi = 0.0
+    win_rate = 0.0
+    trades = 0
+    if not df_hist.empty:
+        vol = df_hist['Stake_Ready'].sum() if 'Stake_Ready' in df_hist.columns else 0
+        trades = len(df_hist)
+        if vol > 0: roi = (profit / vol) * 100
+        wins = len(df_hist[df_hist['Profitto'] > 0])
+        if trades > 0: win_rate = (wins / trades) * 100
+
+    k2.metric("ROI %", f"{roi:.2f}%")
+    k3.metric("WIN RATE", f"{win_rate:.0f}%")
+    k4.metric("TRADES", trades)
+    st.markdown("---")
+    
+    g1, g2 = st.columns([2, 1])
+    with g1:
+        st.markdown("#### 📈 PERFORMANCE TREND")
+        if not df_hist.empty:
+            df_chart = df_hist.copy()
+            df_chart['Progressivo'] = bankroll_start + df_chart['Profitto'].cumsum()
+            df_chart['Trade_ID'] = range(1, len(df_chart) + 1)
+            fig = px.area(df_chart, x='Trade_ID', y='Progressivo', template="plotly_dark")
+            fig.update_traces(line_color='#00E096', fill_color='rgba(0, 224, 150, 0.1)')
+            fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', margin=dict(t=10, l=0, r=0, b=0), height=300)
+            st.plotly_chart(fig, use_container_width=True)
+        else: st.info("In attesa di dati storici...")
+    with g2:
+        st.markdown("#### 🍰 ASSET ALLOCATION")
+        if not df_hist.empty and 'Sport' in df_hist.columns:
+            fig_pie = px.pie(df_hist, names='Sport', values='Stake_Ready', donut=0.6, template="plotly_dark")
+            fig_pie.update_layout(paper_bgcolor='rgba(0,0,0,0)', showlegend=False, margin=dict(t=0, l=0, r=0, b=0), height=300)
+            st.plotly_chart(fig_pie, use_container_width=True)
+        else: st.info("Nessun dato.")
+
+# --- PAGINA 2: RADAR ---
+elif menu == "RADAR ZONE":
+    c1, c2 = st.columns([4, 1])
+    c1.markdown("### 📡 ACTIVE TARGETS")
+    if c2.button("SCAN NOW", type="primary"):
+        with st.spinner("Acquiring Targets..."):
+            run_scanner()
+            time.sleep(0.5)
+            st.rerun()
+
+    if not df_pend.empty and len(df_pend) > 0:
+        if "Rating" not in df_pend.columns and "EV_%" in df_pend.columns:
+            df_pend["Rating"] = df_pend["EV_%"].apply(lambda x: "🟢 SUPER" if x > 2.5 else ("🟡 GOOD" if x > 1.0 else "⚪ WATCH"))
+
+        req_cols = ["Abbinata", "Match", "Selezione", "Q_Betfair", "Rating", "Q_Target", "Trend", "EV_%", "Stake_Ready", "Stake_Limit"]
+        for c in req_cols:
+            if c not in df_pend.columns:
+                if c == "Abbinata": df_pend[c] = False
+                elif c == "Trend": df_pend[c] = "➖"
+                elif c in ["Stake_Ready", "Stake_Limit"]: df_pend[c] = 0
+                else: df_pend[c] = 0.0
+
+        edited = st.data_editor(
+            df_pend,
+            column_config={
+                "Abbinata": st.column_config.CheckboxColumn("✅", width="small"),
+                "Match": st.column_config.TextColumn("EVENTO", width="medium"),
+                "Selezione": st.column_config.TextColumn("BET", width="small"),
+                "Q_Betfair": st.column_config.NumberColumn("Q.BF", format="%.2f"),
+                "Rating": st.column_config.TextColumn("RATING", width="small"),
+                "Q_Target": st.column_config.NumberColumn("🎯 TARGET", format="%.2f"),
+                "Trend": st.column_config.TextColumn("TREND", width="small"),
+                "EV_%": st.column_config.ProgressColumn("VALUE", min_value=-5, max_value=15, format="%.2f%%"),
+                "Stake_Ready": st.column_config.NumberColumn("💶 STAKE (ORA)", format="%d€"),
+                "Stake_Limit": st.column_config.NumberColumn("🎯 STAKE (TARGET)", format="%d€"),
+            },
+            column_order=req_cols,
+            hide_index=True,
+            use_container_width=True,
+            key=f"editor_{int(time.time())}"
+        )
+        
+        act1, act2 = st.columns([1, 4])
+        if act1.button("CONFIRM TRADE"):
+            moved = edited[edited["Abbinata"]==True].copy()
+            if not moved.empty:
+                moved["Esito"] = "PENDING"
+                moved["Profitto"] = 0.0
+                save_data(pd.concat([df_hist, moved], ignore_index=True), FILE_STORICO)
+                save_data(edited[edited["Abbinata"]==False], FILE_PENDING)
+                st.rerun()
+        if act2.button("WIPE RADAR"):
+            save_data(pd.DataFrame(), FILE_PENDING)
+            st.rerun()
+    else:
+        st.info("Nessun target nel raggio d'azione. Riprova più tardi.")
+        if st.button("FORCE RESET"):
+            save_data(pd.DataFrame(), FILE_PENDING)
+            st.rerun()
+
+# --- PAGINA 3: REGISTRO (CON DIAGNOSTICA) ---
+elif menu == "REGISTRO":
+    st.markdown("### 🛠️ DIAGNOSTICA DI SISTEMA")
+    
+    col_d1, col_d2 = st.columns([1, 3])
+    
+    if col_d1.button("LANCIA TEST TENNIS"):
+        try:
+            import test_tennis # Importa lo script locale
+            
+            old_stdout = sys.stdout
+            sys.stdout = mystdout = StringIO()
+            
+            test_tennis.test_connection()
+            
+            sys.stdout = old_stdout
+            output = mystdout.getvalue()
+            
+            st.success("Test completato!")
+            st.code(output, language="text")
+            
+        except ImportError:
+            st.error("ERRORE: File 'test_tennis.py' non trovato! Crealo nella cartella principale.")
+        except Exception as e:
+            st.error(f"Errore durante il test: {e}")
+
+    st.markdown("---")
+    st.markdown("### 📝 LOG OPERATIVO")
+    if not df_hist.empty:
+        st.dataframe(df_hist, use_container_width=True, hide_index=True)
+        st.download_button("SCARICA CSV", df_hist.to_csv(index=False), "sniper_log.csv")
