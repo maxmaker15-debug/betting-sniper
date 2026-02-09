@@ -2,7 +2,7 @@ import requests, csv, os, config, json
 from datetime import datetime, timezone
 import dateutil.parser
 
-# --- CONFIGURAZIONE V46 ---
+# --- CONFIGURAZIONE V48 ---
 API_KEY = config.API_KEY
 TELEGRAM_TOKEN = "8145327630:AAHJC6vDjvGUyPT0pKw63fyW53hTl_F873U"
 TELEGRAM_CHAT_ID = "5562163433"
@@ -11,20 +11,13 @@ FILE_MEMORY = "odds_memory_tennis.json"
 BANKROLL = 5000.0
 MAX_STAKE_PERC = 0.02
 MIN_STAKE_EURO = 10.0
-KELLY_FRACTION = 0.30 # Tuned
+KELLY_FRACTION = 0.30
 
-MIN_ODDS = 1.60  
-MAX_ODDS = 3.50  
+# Range ampio per il Tennis
+MIN_ODDS = 1.30  
+MAX_ODDS = 5.00  
 MIN_EV_VALUE = 1.5
 MIN_EV_WATCH = -1.5
-
-COMPETIZIONI_ELITE_TENNIS = [
-    'tennis_atp_australian_open', 'tennis_wta_australian_open',
-    'tennis_atp_french_open', 'tennis_wta_french_open',
-    'tennis_atp_wimbledon', 'tennis_wta_wimbledon',
-    'tennis_atp_us_open', 'tennis_wta_us_open',
-    'tennis_atp_masters_1000', 'tennis_wta_1000'
-]
 
 def load_memory():
     if not os.path.exists(FILE_MEMORY): return {}
@@ -74,7 +67,7 @@ def calcola_target_buy(true_prob):
     except: return 0.0
 
 def scan_tennis():
-    print(f"--- 🎾 TENNIS V46 TUNING - {datetime.now()} ---")
+    print(f"--- 🎾 TENNIS V48 GLOBAL - {datetime.now()} ---")
     
     header = ['Sport', 'Data', 'Ora', 'Torneo', 'Match', 'Selezione', 'Q_Betfair', 'Q_Target', 'Q_Reale', 'EV_%', 'Stake_Ready', 'Stake_Limit', 'Trend', 'Stato', 'Esito', 'Profitto']
     
@@ -89,11 +82,16 @@ def scan_tennis():
         if mode == 'w': writer.writerow(header)
 
         try:
+            # 1. Otteniamo TUTTI gli sport attivi
             resp = requests.get('https://api.the-odds-api.com/v4/sports', params={'apiKey': API_KEY})
-            leagues = [s for s in resp.json() if s['key'] in COMPETIZIONI_ELITE_TENNIS]
+            all_sports = resp.json()
+            
+            # 2. Filtriamo TUTTO ciò che è Tennis (ATP, WTA, ecc.)
+            tennis_leagues = [s for s in all_sports if 'tennis' in s['key'].lower() and not 'winner' in s['key']]
+            
             now_utc = datetime.now(timezone.utc)
 
-            for league in leagues:
+            for league in tennis_leagues:
                 resp = requests.get(f'https://api.the-odds-api.com/v4/sports/{league["key"]}/odds', 
                                   params={'apiKey': API_KEY, 'regions': 'eu', 'markets': 'h2h', 'oddsFormat': 'decimal'})
                 if resp.status_code != 200: continue
@@ -175,7 +173,7 @@ def scan_tennis():
                         if match_best['st'] == "READY":
                             emoji = "🔥" if "DROP" in match_best['trend'] else "🟢"
                             msg = (
-                                f"{emoji} SNIPER V46: {match_best['sel']} {match_best['trend']}\n"
+                                f"{emoji} SNIPER V48: {match_best['sel']} {match_best['trend']}\n"
                                 f"🎾 {match_name}\n"
                                 f"💰 BF: {match_best['bf']} (Target: {match_best['target']})\n"
                                 f"📊 EV: +{match_best['ev']}%\n"
