@@ -2,7 +2,7 @@ import requests, csv, os, config, json
 from datetime import datetime, timezone
 import dateutil.parser
 
-# --- CONFIGURAZIONE V46 ---
+# --- CONFIGURAZIONE V48 ---
 API_KEY = config.API_KEY
 TELEGRAM_TOKEN = "8145327630:AAHJC6vDjvGUyPT0pKw63fyW53hTl_F873U"
 TELEGRAM_CHAT_ID = "5562163433"
@@ -11,10 +11,11 @@ FILE_MEMORY = "odds_memory_calcio.json"
 BANKROLL = 5000.0
 MAX_STAKE_PERC = 0.02
 MIN_STAKE_EURO = 10.0   
-KELLY_FRACTION = 0.30   # AUMENTATO da 0.20 a 0.30 per prendere EV 1.5%
+KELLY_FRACTION = 0.30   
 
-MIN_ODDS = 1.70
-MAX_ODDS = 3.50
+# --- NUOVO RANGE V48 ---
+MIN_ODDS = 1.45  # Abbassato per catturare le favorite (es. Man City, Inter)
+MAX_ODDS = 5.50  # Alzato per catturare underdog di valore
 MIN_EV_VALUE = 1.5      
 MIN_EV_WATCH = -1.5     
 
@@ -23,7 +24,8 @@ COMPETIZIONI_ELITE = [
     'soccer_england_premier_league', 'soccer_england_championship',
     'soccer_spain_la_liga', 'soccer_germany_bundesliga',
     'soccer_france_ligue_one', 'soccer_uefa_champions_league', 
-    'soccer_uefa_europa_league'
+    'soccer_uefa_europa_league', 'soccer_netherlands_eredivisie', 
+    'soccer_portugal_primeira_liga'
 ]
 
 def load_memory():
@@ -61,18 +63,12 @@ def calcola_kelly_stake(true_prob, quota_bf, trend_modifier=1.0):
         q = 1 - p
         full_kelly = (b * p - q) / b
         
-        # Se Kelly è negativo o zero, esci
         if full_kelly <= 0: return 0
         
-        # Calcolo Stake
         adjusted_fraction = KELLY_FRACTION * trend_modifier
         stake_euro = BANKROLL * full_kelly * adjusted_fraction
-        
-        # Cap Massimo
         stake_euro = min(stake_euro, BANKROLL * MAX_STAKE_PERC)
         
-        # Se è inferiore al minimo (10€), restituiamo 0 (non ne vale la pena)
-        # Ma col nuovo Kelly 0.30 dovremmo coprire gli EV 1.5%
         return int(stake_euro) if stake_euro >= MIN_STAKE_EURO else 0
     except: return 0
 
@@ -84,7 +80,7 @@ def calcola_target_buy(true_prob):
     except: return 0.0
 
 def scan_calcio():
-    print(f"--- ⚽ CALCIO V46 TUNING - {datetime.now()} ---")
+    print(f"--- ⚽ CALCIO V48 WIDE - {datetime.now()} ---")
     
     header = ['Sport', 'Data', 'Ora', 'Torneo', 'Match', 'Selezione', 'Q_Betfair', 'Q_Target', 'Q_Reale', 'EV_%', 'Stake_Ready', 'Stake_Limit', 'Trend', 'Stato', 'Esito', 'Profitto']
     
@@ -140,7 +136,6 @@ def scan_calcio():
                     
                     if ev_perc < MIN_EV_WATCH: continue
 
-                    # TREND
                     trend_symbol = "➖"
                     trend_mod = 1.0
                     if match_id in history and sel in history[match_id]:
@@ -154,7 +149,6 @@ def scan_calcio():
                             trend_symbol = "↗️ RISE"
                             trend_mod = 0.5
                     
-                    # STAKE
                     stake_ready = 0
                     stato = "WATCH"
                     if ev_perc >= MIN_EV_VALUE:
@@ -186,7 +180,7 @@ def scan_calcio():
                     if best['st'] == "READY":
                         emoji = "🔥" if "DROP" in best['trend'] else "🟢"
                         msg = (
-                            f"{emoji} SNIPER V46: {best['sel']} {best['trend']}\n"
+                            f"{emoji} SNIPER V48: {best['sel']} {best['trend']}\n"
                             f"⚽ {match_name}\n"
                             f"💰 BF: {best['bf']} (Target: {best['target']})\n"
                             f"📊 EV: +{best['ev']}%\n"
@@ -200,3 +194,4 @@ def scan_calcio():
 
 if __name__ == "__main__":
     scan_calcio()
+   
