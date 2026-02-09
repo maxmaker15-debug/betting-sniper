@@ -12,7 +12,6 @@ def test_connection():
     if resp.status_code != 200:
         print(f"❌ ERRORE API: {resp.status_code}")
         print(f"Messaggio: {resp.text}")
-        print("VERIFICA LA TUA API KEY o LA QUOTA MENSILE.")
         return
 
     print(f"✅ Connessione OK. Crediti rimanenti: {resp.headers.get('x-requests-remaining', 'N/A')}")
@@ -23,7 +22,6 @@ def test_connection():
     
     if not tennis_leagues:
         print("❌ NESSUN TORNEO TENNIS ATTIVO TROVATO NELL'API.")
-        print("Il fornitore non ha ancora caricato i tabelloni di questa settimana.")
         return
 
     print(f"✅ Trovati {len(tennis_leagues)} campionati Tennis attivi:")
