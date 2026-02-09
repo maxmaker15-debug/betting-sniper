@@ -240,8 +240,31 @@ elif menu == "RADAR ZONE":
             st.rerun()
 
 # --- PAGINA 3: REGISTRO ---
+# ... (tutto il codice prima resta uguale) ...
+
 elif menu == "REGISTRO":
-    st.markdown("### 📝 LOG OPERATIVO")
+    st.markdown("### 🛠️ DIAGNOSTICA DI SISTEMA")
+    
+    if st.button("LANCIA TEST CONNESSIONE TENNIS"):
+        import test_tennis  # Importa lo script che abbiamo creato
+        
+        # Redirige l'output del test sulla schermata dell'App
+        from io import StringIO
+        import sys
+        
+        old_stdout = sys.stdout
+        sys.stdout = mystdout = StringIO()
+        
+        try:
+            test_tennis.test_connection() # Esegue la funzione di test
+            output = mystdout.getvalue()
+            st.code(output, language="text") # Mostra il risultato nel box grigio
+        except Exception as e:
+            st.error(f"Errore durante il test: {e}")
+        finally:
+            sys.stdout = old_stdout
+            
+    st.markdown("---")
+    st.markdown("### 📝 LOG OPERATIVO (Standard)")
     if not df_hist.empty:
         st.dataframe(df_hist, use_container_width=True, hide_index=True)
-        st.download_button("SCARICA CSV", df_hist.to_csv(index=False), "sniper_log.csv")
