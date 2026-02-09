@@ -2,19 +2,23 @@ import requests, csv, os, config, json
 from datetime import datetime, timezone
 import dateutil.parser
 
-# --- CONFIGURAZIONE COMMANDER V41 ---
+# --- CONFIGURAZIONE COMMANDER V45 ---
 API_KEY = config.API_KEY
 TELEGRAM_TOKEN = "8145327630:AAHJC6vDjvGUyPT0pKw63fyW53hTl_F873U"
 TELEGRAM_CHAT_ID = "5562163433"
-FILE_MEMORY = "odds_memory.json" # La memoria del sistema
+FILE_MEMORY = "odds_memory_calcio.json" # Memoria Trend
 
+# --- REGOLE D'INGAGGIO V45 ---
 BANKROLL = 5000.0
 MAX_STAKE_PERC = 0.02
 MIN_STAKE_EURO = 10.0
 KELLY_FRACTION = 0.20
 
-MIN_ODDS = 1.50
-MAX_ODDS = 8.00
+MIN_ODDS = 1.70  # Sotto non ne vale la pena
+MAX_ODDS = 3.50  # Sopra è troppa varianza
+MIN_EV_VALUE = 1.5      # Value Bet Pura (Fuoco)
+MIN_EV_WATCH = -1.5     # Quasi Value (Monitorare)
+
 COMPETIZIONI_ELITE = [
     'soccer_italy_serie_a', 'soccer_italy_serie_b',
     'soccer_england_premier_league', 'soccer_england_championship',
@@ -23,7 +27,6 @@ COMPETIZIONI_ELITE = [
     'soccer_uefa_europa_league'
 ]
 
-# --- GESTIONE MEMORIA ---
 def load_memory():
     if not os.path.exists(FILE_MEMORY): return {}
     try:
@@ -50,7 +53,7 @@ def get_fair_odds_pinnacle(odds_dict):
         return {k: (1/v)/margin for k, v in odds_dict.items()}
     except: return {}
 
-def calcola_kelly_stake(true_prob, quota_bf):
+def calcola_kelly_stake(true_prob, quota_bf, trend_modifier=1.0):
     try:
         if quota_bf <= 1.01: return 0
         quota_netta = 1 + ((quota_bf - 1) * (1 - config.COMMISSIONE_BETFAIR))
@@ -59,7 +62,11 @@ def calcola_kelly_stake(true_prob, quota_bf):
         q = 1 - p
         full_kelly = (b * p - q) / b
         if full_kelly <= 0: return 0
-        stake_euro = min(BANKROLL * full_kelly * KELLY_FRACTION, BANKROLL * MAX_STAKE_PERC)
+        
+        # Applichiamo il modificatore del trend (es. 1.2 se Drop, 0.8 se Rise)
+        adjusted_fraction = KELLY_FRACTION * trend_modifier
+        stake_euro = min(BANKROLL * full_kelly * adjusted_fraction, BANKROLL * MAX_STAKE_PERC)
+        
         return int(stake_euro) if stake_euro >= MIN_STAKE_EURO else 0
     except: return 0
 
@@ -71,16 +78,14 @@ def calcola_target_buy(true_prob):
     except: return 0.0
 
 def scan_calcio():
-    print(f"--- ⚽ CALCIO V41 TREND HUNTER - {datetime.now()} ---")
+    print(f"--- ⚽ CALCIO V45 SNIPER - {datetime.now()} ---")
     
-    # NUOVA COLONNA: 'Trend'
     header = ['Sport', 'Data', 'Ora', 'Torneo', 'Match', 'Selezione', 'Q_Betfair', 'Q_Target', 'Q_Reale', 'EV_%', 'Stake_Ready', 'Stake_Limit', 'Trend', 'Stato', 'Esito', 'Profitto']
     
-    # Carichiamo la memoria storica
     history = load_memory()
-    new_history = {} # Qui salveremo i dati freschi
-
-    # Sovrascriviamo il file pending (così è sempre pulito)
+    new_history = {}
+    
+    # Sovrascrittura pulita
     with open(config.FILE_PENDING, 'w', newline='', encoding='utf-8') as f:
         writer = csv.writer(f)
         writer.writerow(header)
@@ -100,7 +105,7 @@ def scan_calcio():
                     if dateutil.parser.parse(event['commence_time']) <= now_utc: continue
                 except: continue
 
-                match_id = event['id'] # ID univoco del match
+                match_id = event['id']
                 match_name = f"{event['home_team']} vs {event['away_team']}"
                 
                 pinna_odds, bf_odds = {}, {}
@@ -112,7 +117,7 @@ def scan_calcio():
                 
                 if not pinna_odds or not bf_odds: continue
                 
-                # Salviamo le quote pinna attuali nella nuova memoria
+                # Memoria Trend
                 new_history[match_id] = pinna_odds
 
                 real_probs = get_fair_odds_pinnacle(pinna_odds)
@@ -122,39 +127,45 @@ def scan_calcio():
 
                 for sel, bf_price in bf_odds.items():
                     if sel not in real_probs: continue
+                    # REGOLA 1: RANGE 1.70 - 3.50
                     if not (MIN_ODDS <= bf_price <= MAX_ODDS): continue
                     
-                    is_draw = (sel == 'Draw' or sel == 'X')
                     true_p = real_probs[sel]
                     real_odd = round(1/true_p, 2)
                     
-                    # 1. Calcolo EV
                     bf_net = 1 + ((bf_price - 1) * (1 - config.COMMISSIONE_BETFAIR))
                     ev_perc = round(((true_p * bf_net) - 1) * 100, 2)
                     q_target = calcola_target_buy(true_p)
                     
-                    # 2. CALCOLO TREND (DROP/RISE)
-                    trend_symbol = "➖" # Stabile
-                    pinna_now = pinna_odds[sel]
+                    # REGOLA 2: FILTRO EV
+                    if ev_perc < MIN_EV_WATCH: continue
+
+                    # REGOLA 3: TREND ANALYSIS
+                    trend_symbol = "➖"
+                    trend_mod = 1.0 # Modificatore Stake base
                     
-                    # Se il match esisteva in memoria e aveva questa selezione
                     if match_id in history and sel in history[match_id]:
                         pinna_old = history[match_id][sel]
+                        pinna_now = pinna_odds[sel]
                         diff = pinna_now - pinna_old
-                        if diff < 0: trend_symbol = "↘️ DROP" # Ottimo! Pinna scende
-                        elif diff > 0: trend_symbol = "↗️ RISE" # Male! Pinna sale
+                        
+                        if diff < 0: 
+                            trend_symbol = "↘️ DROP" # Ottimo
+                            trend_mod = 1.2 # Aumento Stake del 20%
+                        elif diff > 0: 
+                            trend_symbol = "↗️ RISE" # Male
+                            trend_mod = 0.5 # Dimezzo Stake rischio
                     
-                    # 3. Logica READY
-                    if is_draw and ev_perc < 3.5: continue
-                    
+                    # REGOLA 4: STATO & STAKE
                     stake_ready = 0
                     stato = "WATCH"
-                    if ev_perc >= 1.5:
-                        stake_ready = calcola_kelly_stake(true_p, bf_price)
+                    
+                    if ev_perc >= MIN_EV_VALUE:
+                        stake_ready = calcola_kelly_stake(true_p, bf_price, trend_mod)
                         stato = "READY" if stake_ready > 0 else "WATCH"
                     
                     q_calc = max(bf_price, q_target)
-                    stake_limit = calcola_kelly_stake(true_p, q_calc)
+                    stake_limit = calcola_kelly_stake(true_p, q_calc, trend_mod)
 
                     if stake_limit > 0:
                         match_candidates.append({
@@ -164,22 +175,22 @@ def scan_calcio():
                         })
 
                 if match_candidates:
+                    # REGOLA 5: SOLO IL MIGLIORE DEL MATCH
                     best = sorted(match_candidates, key=lambda x: x['ev'], reverse=True)[0]
                     
-                    # Scriviamo sul CSV
                     with open(config.FILE_PENDING, 'a', newline='', encoding='utf-8') as f:
                         csv.writer(f).writerow([
                             'CALCIO', datetime.now().strftime("%d/%m %H:%M"), converti_orario(event['commence_time']),
                             league['title'], match_name, best['sel'],
                             best['bf'], best['target'], best['real'], best['ev'],
                             best['s_ready'], best['s_limit'], 
-                            best['trend'], # COLONNA NUOVA
-                            best['st'], '', ''
+                            best['trend'], best['st'], '', ''
                         ])
 
                     if best['st'] == "READY":
+                        emoji = "🔥" if "DROP" in best['trend'] else "🟢"
                         msg = (
-                            f"🟢 SNIPER V41: {best['sel']} {best['trend']}\n"
+                            f"{emoji} SNIPER V45: {best['sel']} {best['trend']}\n"
                             f"⚽ {match_name}\n"
                             f"💰 BF: {best['bf']} (Target: {best['target']})\n"
                             f"📊 EV: +{best['ev']}%\n"
@@ -187,7 +198,6 @@ def scan_calcio():
                         )
                         send_telegram(msg)
         
-        # Aggiorniamo la memoria su disco per il prossimo scan
         save_memory(new_history)
                         
     except Exception as e: print(f"Err: {e}")
