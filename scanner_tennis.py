@@ -2,7 +2,7 @@ import requests, csv, os, config, json
 from datetime import datetime, timezone
 import dateutil.parser
 
-# --- CONFIGURAZIONE V48 ---
+# --- CONFIGURAZIONE V53 TENNIS (NATIVE AUTO) ---
 API_KEY = config.API_KEY
 TELEGRAM_TOKEN = "8145327630:AAHJC6vDjvGUyPT0pKw63fyW53hTl_F873U"
 TELEGRAM_CHAT_ID = "5562163433"
@@ -13,11 +13,10 @@ MAX_STAKE_PERC = 0.02
 MIN_STAKE_EURO = 10.0
 KELLY_FRACTION = 0.30
 
-# Range ampio per il Tennis
-MIN_ODDS = 1.30  
-MAX_ODDS = 5.00  
-MIN_EV_VALUE = 1.5
-MIN_EV_WATCH = -1.5
+MIN_ODDS = 1.20
+MAX_ODDS = 7.00
+MIN_EV_VALUE = 2.0
+MIN_EV_WATCH = -1.0
 
 def load_memory():
     if not os.path.exists(FILE_MEMORY): return {}
@@ -33,10 +32,6 @@ def save_memory(data):
 def send_telegram(msg):
     try: requests.get(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", params={"chat_id": TELEGRAM_CHAT_ID, "text": msg})
     except: pass
-
-def converti_orario(iso_date):
-    try: return dateutil.parser.parse(iso_date).strftime("%Y-%m-%d %H:%M")
-    except: return iso_date
 
 def get_fair_odds_pinnacle(odds_dict):
     try:
@@ -54,20 +49,20 @@ def calcola_kelly_stake(true_prob, quota_bf, trend_modifier=1.0):
         q = 1 - p
         full_kelly = (b * p - q) / b
         if full_kelly <= 0: return 0
-        
-        adjusted_fraction = KELLY_FRACTION * trend_modifier
-        stake_euro = min(BANKROLL * full_kelly * adjusted_fraction, BANKROLL * MAX_STAKE_PERC)
-        return int(stake_euro) if stake_euro >= MIN_STAKE_EURO else 0
+        stake = BANKROLL * full_kelly * KELLY_FRACTION * trend_modifier
+        stake = min(stake, BANKROLL * MAX_STAKE_PERC)
+        return int(stake) if stake >= MIN_STAKE_EURO else 0
     except: return 0
 
 def calcola_target_buy(true_prob):
     try:
-        target_net = (1 + 0.025) / true_prob
+        target_roi = 0.03
+        target_net = (1 + target_roi) / true_prob
         return round(((target_net - 1) / (1 - config.COMMISSIONE_BETFAIR)) + 1, 2)
     except: return 0.0
 
 def scan_tennis():
-    print(f"--- 🎾 TENNIS V48 GLOBAL - {datetime.now()} ---")
+    print(f"--- 🎾 TENNIS V53 (AUTO) - {datetime.now()} ---")
     
     header = ['Sport', 'Data', 'Ora', 'Torneo', 'Match', 'Selezione', 'Q_Betfair', 'Q_Target', 'Q_Reale', 'EV_%', 'Stake_Ready', 'Stake_Limit', 'Trend', 'Stato', 'Esito', 'Profitto']
     
@@ -82,13 +77,16 @@ def scan_tennis():
         if mode == 'w': writer.writerow(header)
 
         try:
-            # 1. Otteniamo TUTTI gli sport attivi
+            # 1. CERCA QUALSIASI LEGA "TENNIS"
             resp = requests.get('https://api.the-odds-api.com/v4/sports', params={'apiKey': API_KEY})
             all_sports = resp.json()
             
-            # 2. Filtriamo TUTTO ciò che è Tennis (ATP, WTA, ecc.)
-            tennis_leagues = [s for s in all_sports if 'tennis' in s['key'].lower() and not 'winner' in s['key']]
+            tennis_leagues = [
+                s for s in all_sports 
+                if 'tennis' in s['key'].lower() and 'winner' not in s['key'].lower()
+            ]
             
+            print(f"📡 Trovati {len(tennis_leagues)} campionati attivi.")
             now_utc = datetime.now(timezone.utc)
 
             for league in tennis_leagues:
@@ -123,26 +121,19 @@ def scan_tennis():
                         if not (MIN_ODDS <= bf_price <= MAX_ODDS): continue
                         
                         true_p = real_probs[sel]
-                        real_odd = round(1/true_p, 2)
-                        
                         bf_net = 1 + ((bf_price - 1) * (1 - config.COMMISSIONE_BETFAIR))
                         ev_perc = round(((true_p * bf_net) - 1) * 100, 2)
-                        q_target = calcola_target_buy(true_p)
                         
                         if ev_perc < MIN_EV_WATCH: continue
-
+                        
                         trend_symbol = "➖"
                         trend_mod = 1.0
                         if match_id in history and sel in history[match_id]:
                             pinna_old = history[match_id][sel]
                             pinna_now = pinna_odds[sel]
                             diff = pinna_now - pinna_old
-                            if diff < 0: 
-                                trend_symbol = "↘️ DROP"
-                                trend_mod = 1.2
-                            elif diff > 0: 
-                                trend_symbol = "↗️ RISE"
-                                trend_mod = 0.5
+                            if diff < 0: trend_symbol, trend_mod = "↘️ DROP", 1.2
+                            elif diff > 0: trend_symbol, trend_mod = "↗️ RISE", 0.5
                         
                         stake_ready = 0
                         stato = "WATCH"
@@ -150,20 +141,21 @@ def scan_tennis():
                             stake_ready = calcola_kelly_stake(true_p, bf_price, trend_mod)
                             stato = "READY" if stake_ready > 0 else "WATCH"
                         
+                        q_target = calcola_target_buy(true_p)
                         q_calc = max(bf_price, q_target)
                         stake_limit = calcola_kelly_stake(true_p, q_calc, trend_mod)
 
                         if stake_limit > 0:
                             if match_best is None or ev_perc > match_best['ev']:
                                 match_best = {
-                                    'sel': sel, 'bf': bf_price, 'target': q_target, 'real': real_odd,
+                                    'sel': sel, 'bf': bf_price, 'target': q_target, 'real': round(1/true_p, 2),
                                     'ev': ev_perc, 's_ready': stake_ready, 's_limit': stake_limit, 
                                     'trend': trend_symbol, 'st': stato
                                 }
                     
                     if match_best:
                         writer.writerow([
-                            'TENNIS', datetime.now().strftime("%d/%m %H:%M"), converti_orario(event['commence_time']),
+                            'TENNIS', datetime.now().strftime("%d/%m %H:%M"), "Live/Up",
                             league['title'], match_name, match_best['sel'],
                             match_best['bf'], match_best['target'], match_best['real'], match_best['ev'],
                             match_best['s_ready'], match_best['s_limit'], 
@@ -171,14 +163,7 @@ def scan_tennis():
                         ])
                         
                         if match_best['st'] == "READY":
-                            emoji = "🔥" if "DROP" in match_best['trend'] else "🟢"
-                            msg = (
-                                f"{emoji} SNIPER V48: {match_best['sel']} {match_best['trend']}\n"
-                                f"🎾 {match_name}\n"
-                                f"💰 BF: {match_best['bf']} (Target: {match_best['target']})\n"
-                                f"📊 EV: +{match_best['ev']}%\n"
-                                f"💵 STAKE: {match_best['s_ready']}€"
-                            )
+                            msg = f"🔥 SNIPER TENNIS: {match_best['sel']} - {match_name} (EV: {match_best['ev']}%)"
                             send_telegram(msg)
         
         save_memory(new_history)
