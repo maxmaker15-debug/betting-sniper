@@ -2,7 +2,7 @@ import requests, csv, os, config, json
 from datetime import datetime, timezone
 import dateutil.parser
 
-# --- CONFIGURAZIONE V48 ---
+# --- CONFIGURAZIONE V49 ---
 API_KEY = config.API_KEY
 TELEGRAM_TOKEN = "8145327630:AAHJC6vDjvGUyPT0pKw63fyW53hTl_F873U"
 TELEGRAM_CHAT_ID = "5562163433"
@@ -13,11 +13,17 @@ MAX_STAKE_PERC = 0.02
 MIN_STAKE_EURO = 10.0   
 KELLY_FRACTION = 0.30   
 
-# --- NUOVO RANGE V48 ---
-MIN_ODDS = 1.45  # Abbassato per catturare le favorite (es. Man City, Inter)
-MAX_ODDS = 5.50  # Alzato per catturare underdog di valore
-MIN_EV_VALUE = 1.5      
-MIN_EV_WATCH = -1.5     
+# --- RANGE QUOTE (Wide Spectrum) ---
+MIN_ODDS = 1.45  
+MAX_ODDS = 5.50  
+
+# --- SOGLIE STANDARD (1 o 2) ---
+STD_EV_VALUE = 1.5      
+STD_EV_WATCH = -1.5     
+
+# --- SOGLIE PAREGGI (X) ---
+DRAW_EV_VALUE = 2.5     # Molto più severi per considerare VALUE un pareggio
+DRAW_EV_WATCH = 1.5     # Ignoriamo i pareggi sotto l'1.5%
 
 COMPETIZIONI_ELITE = [
     'soccer_italy_serie_a', 'soccer_italy_serie_b',
@@ -80,7 +86,7 @@ def calcola_target_buy(true_prob):
     except: return 0.0
 
 def scan_calcio():
-    print(f"--- ⚽ CALCIO V48 WIDE - {datetime.now()} ---")
+    print(f"--- ⚽ CALCIO V49 DRAW FILTER - {datetime.now()} ---")
     
     header = ['Sport', 'Data', 'Ora', 'Torneo', 'Match', 'Selezione', 'Q_Betfair', 'Q_Target', 'Q_Reale', 'EV_%', 'Stake_Ready', 'Stake_Limit', 'Trend', 'Stato', 'Esito', 'Profitto']
     
@@ -125,6 +131,8 @@ def scan_calcio():
 
                 for sel, bf_price in bf_odds.items():
                     if sel not in real_probs: continue
+                    
+                    # REGOLA 1: RANGE QUOTA
                     if not (MIN_ODDS <= bf_price <= MAX_ODDS): continue
                     
                     true_p = real_probs[sel]
@@ -133,9 +141,22 @@ def scan_calcio():
                     bf_net = 1 + ((bf_price - 1) * (1 - config.COMMISSIONE_BETFAIR))
                     ev_perc = round(((true_p * bf_net) - 1) * 100, 2)
                     q_target = calcola_target_buy(true_p)
-                    
-                    if ev_perc < MIN_EV_WATCH: continue
 
+                    # --- REGOLA 2: FILTRO SPECIFICO PAREGGI (V49) ---
+                    is_draw = (sel == 'Draw' or sel == 'X')
+                    
+                    # Definizione soglie dinamiche
+                    if is_draw:
+                        soglia_watch = DRAW_EV_WATCH # 1.5%
+                        soglia_value = DRAW_EV_VALUE # 2.5%
+                    else:
+                        soglia_watch = STD_EV_WATCH  # -1.5%
+                        soglia_value = STD_EV_VALUE  # 1.5%
+
+                    # Filtro Base (Cestino)
+                    if ev_perc < soglia_watch: continue
+
+                    # TREND
                     trend_symbol = "➖"
                     trend_mod = 1.0
                     if match_id in history and sel in history[match_id]:
@@ -149,9 +170,12 @@ def scan_calcio():
                             trend_symbol = "↗️ RISE"
                             trend_mod = 0.5
                     
+                    # STAKE & STATO
                     stake_ready = 0
                     stato = "WATCH"
-                    if ev_perc >= MIN_EV_VALUE:
+                    
+                    # Diventa READY solo se supera la soglia VALUE specifica (2.5 per X, 1.5 per 1/2)
+                    if ev_perc >= soglia_value:
                         stake_ready = calcola_kelly_stake(true_p, bf_price, trend_mod)
                         stato = "READY" if stake_ready > 0 else "WATCH"
                     
@@ -166,6 +190,7 @@ def scan_calcio():
                         })
 
                 if match_candidates:
+                    # REGOLA 3: SOLO IL MIGLIORE DEL MATCH
                     best = sorted(match_candidates, key=lambda x: x['ev'], reverse=True)[0]
                     
                     with open(config.FILE_PENDING, 'a', newline='', encoding='utf-8') as f:
@@ -180,7 +205,7 @@ def scan_calcio():
                     if best['st'] == "READY":
                         emoji = "🔥" if "DROP" in best['trend'] else "🟢"
                         msg = (
-                            f"{emoji} SNIPER V48: {best['sel']} {best['trend']}\n"
+                            f"{emoji} SNIPER V49: {best['sel']} {best['trend']}\n"
                             f"⚽ {match_name}\n"
                             f"💰 BF: {best['bf']} (Target: {best['target']})\n"
                             f"📊 EV: +{best['ev']}%\n"
@@ -194,4 +219,5 @@ def scan_calcio():
 
 if __name__ == "__main__":
     scan_calcio()
+
    
