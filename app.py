@@ -1,3 +1,16 @@
+Comandante, chiedo scusa. 🦅
+
+L'errore è mio: ho lasciato un "segnaposto visivo" (`
+
+Getty Images
+Esplora
+
+`) all'interno del codice Python. Ovviamente Python non sa cosa farsene e si blocca.
+
+Ecco il file app.py (V45 FIXED) corretto e pulito. Copia e sostituisci questo file.
+
+📂 FILE: app.py (V45 - Stability Patch)
+Python
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -156,11 +169,6 @@ elif menu == "RADAR ZONE":
                 elif c in ["Stake_Ready", "Stake_Limit"]: df_pend[c] = 0
                 else: df_pend[c] = 0.0
 
-        
-
-[Image of line chart showing growth]
- # Tag placeholder per visualizzare il grafico se richiesto in futuro
-
         edited = st.data_editor(
             df_pend,
             column_config={
@@ -206,5 +214,4 @@ elif menu == "REGISTRO":
     st.markdown("### 📝 LOG OPERATIVO")
     if not df_hist.empty:
         st.dataframe(df_hist, use_container_width=True, hide_index=True)
-        st.download_button("SCARICA CSV", df_hist.to_csv(index=False), "sniper_log.csv")
-   
+        st.download_button("SCARICA CSV", df_hist.to_csv(index=False), "sniper_log.csv
