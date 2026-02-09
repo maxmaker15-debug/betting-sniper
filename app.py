@@ -1,16 +1,3 @@
-Comandante, chiedo scusa. 🦅
-
-L'errore è mio: ho lasciato un "segnaposto visivo" (`
-
-Getty Images
-Esplora
-
-`) all'interno del codice Python. Ovviamente Python non sa cosa farsene e si blocca.
-
-Ecco il file app.py (V45 FIXED) corretto e pulito. Copia e sostituisci questo file.
-
-📂 FILE: app.py (V45 - Stability Patch)
-Python
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -120,7 +107,7 @@ if menu == "DASHBOARD":
     
     st.markdown("---")
     
-    # GRAFICI (RIPRISTINATI)
+    # GRAFICI
     g1, g2 = st.columns([2, 1])
     
     with g1:
@@ -214,4 +201,4 @@ elif menu == "REGISTRO":
     st.markdown("### 📝 LOG OPERATIVO")
     if not df_hist.empty:
         st.dataframe(df_hist, use_container_width=True, hide_index=True)
-        st.download_button("SCARICA CSV", df_hist.to_csv(index=False), "sniper_log.csv
+        st.download_button("SCARICA CSV", df_hist.to_csv(index=False), "sniper_log.csv")
