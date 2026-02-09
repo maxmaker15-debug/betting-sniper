@@ -19,11 +19,15 @@ COMPETIZIONI_ELITE = [
 
 MIN_ODDS = 1.60
 MAX_ODDS = 5.00     
-MIN_EV_SAVE = 0.5   # Salviamo solo se c'è almeno un mezzo punto percentuale
-MIN_EV_NOTIFY = 2.0 # Notifica Telegram solo per valore solido
+MIN_EV_SAVE = 0.5
+MIN_EV_NOTIFY = 2.0 
+
+# --- SOGLIE DI FILTRAGGIO (Anti-Pareggio) ---
+MIN_EV_HOME_AWAY = 1.5  # Basta poco valore per puntare sulle favorite
+MIN_EV_DRAW = 4.0       # Serve MOLTO valore per rischiare sul pareggio
 
 # CONFIGURAZIONE KELLY
-KELLY_FRACTION = 0.20 # Usiamo il 20% del Full Kelly per sicurezza (Standard professionale)
+KELLY_FRACTION = 0.20 
 
 def send_telegram(msg):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
@@ -43,7 +47,6 @@ def calcola_quota_reale_pinnacle(odds_dict):
     except: return {}
 
 def calcola_target_quota(true_prob):
-    # Target per avere un EV del 2%
     try:
         target_roi = 0.02
         target_net_odds = (1 + target_roi) / true_prob
@@ -52,44 +55,26 @@ def calcola_target_quota(true_prob):
     except: return 0.0
 
 def calcola_stake_kelly(true_prob, quota_bf):
-    """
-    Calcola lo stake usando il Criterio di Kelly Frazionato.
-    """
     try:
-        # 1. Calcola quota netta (togliendo commissione betfair)
         quota_netta = 1 + ((quota_bf - 1) * (1 - config.COMMISSIONE_BETFAIR))
-        
-        # 2. Formula Kelly: (bp - q) / b
-        # b = quota_netta - 1
-        # p = true_prob
-        # q = 1 - p
         b = quota_netta - 1
         p = true_prob
         q = 1 - p
-        
         full_kelly_perc = (b * p - q) / b
         
-        # 3. Applica Frazione e Bankroll
         if full_kelly_perc <= 0: return 0
         
         stake_perc = full_kelly_perc * KELLY_FRACTION
         stake_euro = config.BANKROLL_TOTALE * stake_perc
-        
-        # 4. Limiti di sicurezza
         stake_euro = max(0, min(stake_euro, config.STAKE_MASSIMO))
         
-        # Arrotonda ai 5 euro più vicini per pulizia
         return int(round(stake_euro / 5) * 5)
     except: return 0
 
 def scan_calcio():
-    print(f"--- ⚽ SCANSIONE CALCIO (V33 LASER KELLY) - {datetime.now()} ---")
+    print(f"--- ⚽ SCANSIONE CALCIO (V34 BALANCED) - {datetime.now()} ---")
     
     header = ['Sport', 'Data_Scan', 'Orario_Match', 'Torneo', 'Match', 'Selezione', 'Quota_Betfair', 'Quota_Target', 'Quota_Reale_Pinna', 'Valore_%', 'Stake_Euro', 'Stato_Trade', 'Esito_Finale', 'Profitto_Reale']
-    
-    # Cancelliamo il file precedente se esiste per avere una pulizia totale ad ogni scan
-    # (Opzionale: se vuoi mantenere lo storico dei pending rimuovi questa riga, ma per il debug aiuta)
-    # if os.path.exists(config.FILE_PENDING): os.remove(config.FILE_PENDING)
     
     mode = 'a'
     if not os.path.exists(config.FILE_PENDING): mode = 'w'
@@ -117,7 +102,6 @@ def scan_calcio():
                 home, away = event['home_team'], event['away_team']
                 match_name = f"{home} vs {away}"
                 
-                # Dizionari per le quote
                 pinna_odds_raw = {}
                 betfair_odds_raw = {}
                 
@@ -132,8 +116,6 @@ def scan_calcio():
                 real_probs = calcola_quota_reale_pinnacle(pinna_odds_raw)
                 if not real_probs: continue
 
-                # --- BEST OPTION FILTER ---
-                # Invece di scrivere subito, salviamo i candidati di questo match
                 match_candidates = []
 
                 for sel_name, bf_price in betfair_odds_raw.items():
@@ -147,14 +129,23 @@ def scan_calcio():
                     ev = (true_prob * bf_netto) - 1
                     ev_perc = round(ev * 100, 2)
                     
+                    # --- FILTRO INTELLIGENTE (LOGICA V34) ---
+                    is_draw = (sel_name == 'Draw' or sel_name == 'X')
+                    
+                    # Se è pareggio, richiedi EV > 4.0%. Se è 1 o 2, richiedi EV > 1.5%
+                    soglia_minima = MIN_EV_DRAW if is_draw else MIN_EV_HOME_AWAY
+                    
+                    # Salviamo nel radar anche quelli "vicini" alla soglia per la watchlist (-2%)
                     if ev_perc >= MIN_EV_SAVE:
                         quota_target = calcola_target_quota(true_prob)
-                        if ev_perc >= 2.0: quota_target = bf_price # Se è già buona, target è attuale
+                        if ev_perc >= soglia_minima: quota_target = bf_price
 
                         # Calcolo Stake Kelly
                         stake = calcola_stake_kelly(true_prob, bf_price)
-                        # Se è solo Watchlist (EV basso), mettiamo stake 0 visivo
-                        if ev_perc < 1.0: stake = 0 
+                        
+                        # Se non supera la SOGLIA DI QUALITA', forziamo lo stake a 0 (Solo Watchlist)
+                        if ev_perc < soglia_minima: 
+                            stake = 0
                         
                         match_candidates.append({
                             'sel_name': sel_name,
@@ -163,15 +154,15 @@ def scan_calcio():
                             'fair_odds': round(fair_odds, 2),
                             'ev_perc': ev_perc,
                             'stake': stake,
-                            'stato': "VALUE" if ev_perc >= MIN_EV_NOTIFY else "WATCH"
+                            'stato': "VALUE" if stake > 0 else "WATCH"
                         })
                 
-                # ORA SELEZIONIAMO SOLO IL MIGLIORE DEL MATCH (LASER FILTER)
+                # SELEZIONE MIGLIORE DEL MATCH
                 if match_candidates:
-                    # Ordina per EV decrescente e prendi il primo
-                    best_bet = sorted(match_candidates, key=lambda x: x['ev_perc'], reverse=True)[0]
+                    # Ordina per chi ha lo stake più alto (privilegia le Value Bet vere) poi per EV
+                    best_bet = sorted(match_candidates, key=lambda x: (x['stake'], x['ev_perc']), reverse=True)[0]
                     
-                    print(f"🎯 LASER LOCKED: {match_name} -> {best_bet['sel_name']} (EV {best_bet['ev_perc']}%)")
+                    print(f"🎯 SCAN: {match_name} -> {best_bet['sel_name']} (EV {best_bet['ev_perc']}%)")
                     
                     writer.writerow([
                         'CALCIO', 
@@ -188,9 +179,10 @@ def scan_calcio():
                         best_bet['stato'], '', ''
                     ])
                     
-                    if best_bet['ev_perc'] >= MIN_EV_NOTIFY:
+                    # Notifica solo se è una VALUE confermata (Stake > 0)
+                    if best_bet['stake'] > 0 and best_bet['ev_perc'] >= MIN_EV_NOTIFY:
                         msg = (
-                            f"🟢 VALUE BET (KELLY): {best_bet['sel_name']}\n"
+                            f"🟢 VALUE BET (SMART): {best_bet['sel_name']}\n"
                             f"⚽ {match_name}\n"
                             f"📊 BF: {best_bet['bf_price']} | 🎯 REAL: {best_bet['fair_odds']}\n"
                             f"📈 EV: +{best_bet['ev_perc']}%\n"
