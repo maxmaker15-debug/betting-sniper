@@ -2,171 +2,114 @@ import requests, csv, os, config, json
 from datetime import datetime, timezone
 import dateutil.parser
 
-# --- CONFIGURAZIONE V53 TENNIS (NATIVE AUTO) ---
-API_KEY = config.API_KEY
+# --- CONFIGURAZIONE TENNIS V60 (ODDS API 20k PLAN) ---
+API_KEY = config.API_KEY  # Prende la chiave da 20k inserita in config
 TELEGRAM_TOKEN = "8145327630:AAHJC6vDjvGUyPT0pKw63fyW53hTl_F873U"
 TELEGRAM_CHAT_ID = "5562163433"
-FILE_MEMORY = "odds_memory_tennis.json"
 
 BANKROLL = 5000.0
-MAX_STAKE_PERC = 0.02
-MIN_STAKE_EURO = 10.0
-KELLY_FRACTION = 0.30
+KELLY = 0.30
+MIN_STAKE = 10.0
 
-MIN_ODDS = 1.20
+MIN_ODDS = 1.25
 MAX_ODDS = 7.00
-MIN_EV_VALUE = 2.0
-MIN_EV_WATCH = -1.0
-
-def load_memory():
-    if not os.path.exists(FILE_MEMORY): return {}
-    try:
-        with open(FILE_MEMORY, 'r') as f: return json.load(f)
-    except: return {}
-
-def save_memory(data):
-    try:
-        with open(FILE_MEMORY, 'w') as f: json.dump(data, f)
-    except: pass
+EV_MIN = 2.0
 
 def send_telegram(msg):
     try: requests.get(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", params={"chat_id": TELEGRAM_CHAT_ID, "text": msg})
     except: pass
 
-def get_fair_odds_pinnacle(odds_dict):
+def kelly_stake(true_p, odd_b):
     try:
-        inverses = [1/p for p in odds_dict.values()]
-        margin = sum(inverses)
-        return {k: (1/v)/margin for k, v in odds_dict.items()}
-    except: return {}
-
-def calcola_kelly_stake(true_prob, quota_bf, trend_modifier=1.0):
-    try:
-        if quota_bf <= 1.01: return 0
-        quota_netta = 1 + ((quota_bf - 1) * (1 - config.COMMISSIONE_BETFAIR))
-        b = quota_netta - 1
-        p = true_prob
-        q = 1 - p
-        full_kelly = (b * p - q) / b
-        if full_kelly <= 0: return 0
-        stake = BANKROLL * full_kelly * KELLY_FRACTION * trend_modifier
-        stake = min(stake, BANKROLL * MAX_STAKE_PERC)
-        return int(stake) if stake >= MIN_STAKE_EURO else 0
+        if odd_b <= 1.01: return 0
+        net = 1 + ((odd_b - 1) * 0.95)
+        b = net - 1
+        f = (b * true_p - (1-true_p)) / b
+        stake = BANKROLL * f * KELLY
+        return int(stake) if stake >= MIN_STAKE else 0
     except: return 0
 
-def calcola_target_buy(true_prob):
-    try:
-        target_roi = 0.03
-        target_net = (1 + target_roi) / true_prob
-        return round(((target_net - 1) / (1 - config.COMMISSIONE_BETFAIR)) + 1, 2)
-    except: return 0.0
-
 def scan_tennis():
-    print(f"--- 🎾 TENNIS V53 (AUTO) - {datetime.now()} ---")
+    print(f"--- 🎾 TENNIS V60 (FULL SCAN) - {datetime.now()} ---")
     
     header = ['Sport', 'Data', 'Ora', 'Torneo', 'Match', 'Selezione', 'Q_Betfair', 'Q_Target', 'Q_Reale', 'EV_%', 'Stake_Ready', 'Stake_Limit', 'Trend', 'Stato', 'Esito', 'Profitto']
-    
-    history = load_memory()
-    new_history = {}
-
-    mode = 'a'
-    if not os.path.exists(config.FILE_PENDING): mode = 'w'
+    mode = 'a' if os.path.exists(config.FILE_PENDING) else 'w'
     
     with open(config.FILE_PENDING, mode, newline='', encoding='utf-8') as f:
         writer = csv.writer(f)
         if mode == 'w': writer.writerow(header)
 
         try:
-            # 1. CERCA QUALSIASI LEGA "TENNIS"
+            # 1. Trova TUTTI i tornei tennis attivi (abbiamo 20k crediti, non badare a spese)
             resp = requests.get('https://api.the-odds-api.com/v4/sports', params={'apiKey': API_KEY})
-            all_sports = resp.json()
-            
-            tennis_leagues = [
-                s for s in all_sports 
-                if 'tennis' in s['key'].lower() and 'winner' not in s['key'].lower()
-            ]
-            
-            print(f"📡 Trovati {len(tennis_leagues)} campionati attivi.")
-            now_utc = datetime.now(timezone.utc)
+            if resp.status_code != 200:
+                print(f"Err API Tennis: {resp.status_code}")
+                return
+                
+            leagues = [s for s in resp.json() if 'tennis' in s['key'].lower() and 'winner' not in s['key']]
+            print(f"📡 Trovati {len(leagues)} tornei tennis. Scansione totale in corso...")
 
-            for league in tennis_leagues:
+            for league in leagues:
                 resp = requests.get(f'https://api.the-odds-api.com/v4/sports/{league["key"]}/odds', 
                                   params={'apiKey': API_KEY, 'regions': 'eu', 'markets': 'h2h', 'oddsFormat': 'decimal'})
                 if resp.status_code != 200: continue
                 
-                for event in resp.json():
-                    try:
-                        if dateutil.parser.parse(event['commence_time']) <= now_utc: continue
-                    except: continue
-
-                    match_id = event['id']
-                    match_name = f"{event['home_team']} vs {event['away_team']}"
+                data = resp.json()
+                for ev in data:
+                    match = f"{ev['home_team']} vs {ev['away_team']}"
                     
-                    pinna_odds, bf_odds = {}, {}
-                    for b in event['bookmakers']:
+                    # Cerca Bookmakers
+                    pinna = {}
+                    bf = {}
+                    
+                    for b in ev['bookmakers']:
                         if b['key'] == 'pinnacle':
-                            for o in b['markets'][0]['outcomes']: pinna_odds[o['name']] = o['price']
-                        if 'betfair' in b['title'].lower():
-                            for o in b['markets'][0]['outcomes']: bf_odds[o['name']] = o['price']
+                            for o in b['markets'][0]['outcomes']: pinna[o['name']] = o['price']
+                        if b['key'] == 'betfair_ex_eu' or b['key'] == 'betfair': # Cerca Exchange
+                            for o in b['markets'][0]['outcomes']: bf[o['name']] = o['price']
                     
-                    if not pinna_odds or not bf_odds: continue
-                    new_history[match_id] = pinna_odds
-                    real_probs = get_fair_odds_pinnacle(pinna_odds)
-                    if not real_probs: continue
+                    # Se manca Exchange, usa Bet365 come riferimento per il Target
+                    if not bf:
+                         for b in ev['bookmakers']:
+                            if b['key'] == 'bet365':
+                                for o in b['markets'][0]['outcomes']: bf[o['name']] = o['price']
 
-                    match_best = None
+                    if not pinna or not bf: continue
 
-                    for sel, bf_price in bf_odds.items():
+                    # Calcoli
+                    margin = sum([1/x for x in pinna.values()])
+                    real_probs = {k: (1/v)/margin for k,v in pinna.items()}
+
+                    for sel, odd in bf.items():
                         if sel not in real_probs: continue
-                        if not (MIN_ODDS <= bf_price <= MAX_ODDS): continue
-                        
                         true_p = real_probs[sel]
-                        bf_net = 1 + ((bf_price - 1) * (1 - config.COMMISSIONE_BETFAIR))
-                        ev_perc = round(((true_p * bf_net) - 1) * 100, 2)
                         
-                        if ev_perc < MIN_EV_WATCH: continue
-                        
-                        trend_symbol = "➖"
-                        trend_mod = 1.0
-                        if match_id in history and sel in history[match_id]:
-                            pinna_old = history[match_id][sel]
-                            pinna_now = pinna_odds[sel]
-                            diff = pinna_now - pinna_old
-                            if diff < 0: trend_symbol, trend_mod = "↘️ DROP", 1.2
-                            elif diff > 0: trend_symbol, trend_mod = "↗️ RISE", 0.5
-                        
-                        stake_ready = 0
-                        stato = "WATCH"
-                        if ev_perc >= MIN_EV_VALUE:
-                            stake_ready = calcola_kelly_stake(true_p, bf_price, trend_mod)
-                            stato = "READY" if stake_ready > 0 else "WATCH"
-                        
-                        q_target = calcola_target_buy(true_p)
-                        q_calc = max(bf_price, q_target)
-                        stake_limit = calcola_kelly_stake(true_p, q_calc, trend_mod)
+                        if not (MIN_ODDS <= odd <= MAX_ODDS): continue
 
-                        if stake_limit > 0:
-                            if match_best is None or ev_perc > match_best['ev']:
-                                match_best = {
-                                    'sel': sel, 'bf': bf_price, 'target': q_target, 'real': round(1/true_p, 2),
-                                    'ev': ev_perc, 's_ready': stake_ready, 's_limit': stake_limit, 
-                                    'trend': trend_symbol, 'st': stato
-                                }
-                    
-                    if match_best:
-                        writer.writerow([
-                            'TENNIS', datetime.now().strftime("%d/%m %H:%M"), "Live/Up",
-                            league['title'], match_name, match_best['sel'],
-                            match_best['bf'], match_best['target'], match_best['real'], match_best['ev'],
-                            match_best['s_ready'], match_best['s_limit'], 
-                            match_best['trend'], match_best['st'], '', ''
-                        ])
+                        net = 1 + ((odd - 1) * 0.95)
+                        ev = round(((true_p * net) - 1) * 100, 2)
                         
-                        if match_best['st'] == "READY":
-                            msg = f"🔥 SNIPER TENNIS: {match_best['sel']} - {match_name} (EV: {match_best['ev']}%)"
-                            send_telegram(msg)
-        
-        save_memory(new_history)
+                        if ev < -1.0: continue
+
+                        stake = 0
+                        st = "WATCH"
+                        if ev >= EV_MIN:
+                            stake = kelly_stake(true_p, odd)
+                            st = "READY" if stake > 0 else "WATCH"
+                        
+                        target_p = round((( (1.025)/true_p - 1)/0.95) + 1, 2)
+                        limit = kelly_stake(true_p, max(odd, target_p))
+
+                        if limit > 0:
+                             writer.writerow([
+                                'TENNIS', datetime.now().strftime("%d/%m %H:%M"), "Live/Up",
+                                league['title'], match, sel,
+                                odd, target_p, round(1/true_p, 2), ev,
+                                stake, limit, "➖", st, '', ''
+                            ])
+                             
+                             if st == "READY":
+                                 send_telegram(f"🎾 ODS-V60: {match} ({sel}) EV:{ev}%")
 
         except Exception as e: print(f"Err Tennis: {e}")
 
