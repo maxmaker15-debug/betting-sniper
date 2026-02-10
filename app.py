@@ -1,3 +1,10 @@
+Hai ragione, scusami. È un errore di sintassi banalissimo: manca una parentesi chiusa ) proprio nell'ultima riga del codice.
+
+Per evitare qualsiasi confusione e rispettare la tua richiesta di avere il codice completo e pronto all'uso, ecco il file app.py intero e corretto.
+
+Copia tutto questo blocco e sovrascrivi interamente il tuo file app.py.
+
+Python
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -16,7 +23,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- CSS (Mantenuto Identico) ---
+# --- CSS ---
 st.markdown("""
     <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
     <style>
@@ -42,7 +49,6 @@ def enforce_schema(df):
     if df.empty: return df
     try:
         # Mappatura colonne per sicurezza (V60 Output -> Display)
-        # Il V60 scrive già header corretti, ma per sicurezza:
         rename_map = {
             "Quota_Betfair": "Q_Betfair", 
             "Quota_Target": "Q_Target", 
@@ -226,4 +232,4 @@ elif menu == "REGISTRO":
     st.markdown("### 📝 LOG OPERATIVO")
     if not df_hist.empty:
         st.dataframe(df_hist, use_container_width=True, hide_index=True)
-        st.download_button("SCARICA CSV", df_hist.to_csv(index=False), "sniper_log.csv"
+        st.download_button("SCARICA CSV", df_hist.to_csv(index=False), "sniper_log.csv")
