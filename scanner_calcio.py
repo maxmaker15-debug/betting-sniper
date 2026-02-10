@@ -1,200 +1,151 @@
 import requests, csv, os, config, json
-from datetime import datetime, timezone
-import dateutil.parser
+from datetime import datetime, timedelta
 
-# --- CONFIGURAZIONE V53 CALCIO ---
-API_KEY = config.API_KEY
+# --- CONFIGURAZIONE SPORTMONKS V60 ---
+TOKEN = config.SPORTMONKS_TOKEN
 TELEGRAM_TOKEN = "8145327630:AAHJC6vDjvGUyPT0pKw63fyW53hTl_F873U"
 TELEGRAM_CHAT_ID = "5562163433"
-FILE_MEMORY = "odds_memory_calcio.json"
 
+# STRATEGIA
 BANKROLL = 5000.0
-MAX_STAKE_PERC = 0.02
-MIN_STAKE_EURO = 10.0   
-KELLY_FRACTION = 0.30   
+KELLY = 0.30
+MIN_STAKE = 10.0
 
-# --- RANGE QUOTE ---
-MIN_ODDS = 1.45  # Cattura anche le favorite
-MAX_ODDS = 5.50  # Cattura le underdog
+# FILTRO QUOTE
+MIN_ODDS = 1.45
+MAX_ODDS = 6.50
+EV_MIN = 2.0  # Richiediamo valore puro
 
-# --- SOGLIE PAREGGI (X) ---
-# I pareggi devono essere eccezionali per essere giocati
-DRAW_EV_VALUE = 2.5     
-DRAW_EV_WATCH = 1.5     
+# BOOKMAKER IDs (Sportmonks V3 Standard)
+BK_PINNACLE = 2
+BK_BETFAIR = 6
+BK_BET365 = 1  # Usato come backup affidabile se manca Betfair
 
-# --- SOGLIE STANDARD (1 o 2) ---
-STD_EV_VALUE = 1.5      
-STD_EV_WATCH = -1.5     
-
-COMPETIZIONI_ELITE = [
-    'soccer_italy_serie_a', 'soccer_italy_serie_b',
-    'soccer_england_premier_league', 'soccer_england_championship',
-    'soccer_spain_la_liga', 'soccer_germany_bundesliga',
-    'soccer_france_ligue_one', 'soccer_uefa_champions_league', 
-    'soccer_uefa_europa_league', 'soccer_netherlands_eredivisie', 
-    'soccer_portugal_primeira_liga'
+# LEGE EUROPEE (Il tuo piano copre queste)
+EURO_LEAGUES = [
+    "Champions League", "Europa League", "Conference League",
+    "Serie A", "Serie B", "Premier League", "Championship",
+    "La Liga", "Bundesliga", "Ligue 1", "Eredivisie", 
+    "Primeira Liga", "Coppa Italia", "FA Cup"
 ]
-
-def load_memory():
-    if not os.path.exists(FILE_MEMORY): return {}
-    try:
-        with open(FILE_MEMORY, 'r') as f: return json.load(f)
-    except: return {}
-
-def save_memory(data):
-    try:
-        with open(FILE_MEMORY, 'w') as f: json.dump(data, f)
-    except: pass
 
 def send_telegram(msg):
     try: requests.get(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", params={"chat_id": TELEGRAM_CHAT_ID, "text": msg})
     except: pass
 
-def converti_orario(iso_date):
-    try: return dateutil.parser.parse(iso_date).strftime("%Y-%m-%d %H:%M")
-    except: return iso_date
-
-def get_fair_odds_pinnacle(odds_dict):
+def kelly_crit(true_p, odd_b):
     try:
-        inverses = [1/p for p in odds_dict.values()]
-        margin = sum(inverses)
-        return {k: (1/v)/margin for k, v in odds_dict.items()}
-    except: return {}
-
-def calcola_kelly_stake(true_prob, quota_bf, trend_modifier=1.0):
-    try:
-        if quota_bf <= 1.01: return 0
-        quota_netta = 1 + ((quota_bf - 1) * (1 - config.COMMISSIONE_BETFAIR))
-        b = quota_netta - 1
-        p = true_prob
-        q = 1 - p
-        full_kelly = (b * p - q) / b
-        
-        if full_kelly <= 0: return 0
-        
-        adjusted_fraction = KELLY_FRACTION * trend_modifier
-        stake_euro = BANKROLL * full_kelly * adjusted_fraction
-        stake_euro = min(stake_euro, BANKROLL * MAX_STAKE_PERC)
-        
-        return int(stake_euro) if stake_euro >= MIN_STAKE_EURO else 0
+        if odd_b <= 1.01: return 0
+        net_odd = 1 + ((odd_b - 1) * (1 - config.COMMISSIONE_BETFAIR))
+        b = net_odd - 1
+        q = 1 - true_p
+        f = (b * true_p - q) / b
+        stake = BANKROLL * f * KELLY
+        return int(stake) if stake >= MIN_STAKE else 0
     except: return 0
 
-def calcola_target_buy(true_prob):
-    try:
-        target_roi = 0.025
-        target_net = (1 + target_roi) / true_prob
-        return round(((target_net - 1) / (1 - config.COMMISSIONE_BETFAIR)) + 1, 2)
-    except: return 0.0
-
 def scan_calcio():
-    print(f"--- ⚽ CALCIO V53 STABLE - {datetime.now()} ---")
+    print(f"--- ⚽ CALCIO V60 (SPORTMONKS EUROPE) - {datetime.now()} ---")
+    
+    if "INCOLLA_QUI" in TOKEN:
+        print("⚠️ ERRORE: Inserisci il token Sportmonks in config.py!")
+        return
+
+    # Date: Oggi e Domani
+    dates = [datetime.now().strftime("%Y-%m-%d"), (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")]
     
     header = ['Sport', 'Data', 'Ora', 'Torneo', 'Match', 'Selezione', 'Q_Betfair', 'Q_Target', 'Q_Reale', 'EV_%', 'Stake_Ready', 'Stake_Limit', 'Trend', 'Stato', 'Esito', 'Profitto']
+    mode = 'a' if os.path.exists(config.FILE_PENDING) else 'w'
     
-    history = load_memory()
-    new_history = {}
-    
-    with open(config.FILE_PENDING, 'w', newline='', encoding='utf-8') as f:
+    with open(config.FILE_PENDING, mode, newline='', encoding='utf-8') as f:
         writer = csv.writer(f)
-        writer.writerow(header)
+        if mode == 'w': writer.writerow(header)
 
-    try:
-        resp = requests.get('https://api.the-odds-api.com/v4/sports', params={'apiKey': API_KEY})
-        leagues = [s for s in resp.json() if s['key'] in COMPETIZIONI_ELITE]
-        now_utc = datetime.now(timezone.utc)
-
-        for league in leagues:
-            resp = requests.get(f'https://api.the-odds-api.com/v4/sports/{league["key"]}/odds', 
-                              params={'apiKey': API_KEY, 'regions': 'eu', 'markets': 'h2h', 'oddsFormat': 'decimal'})
-            if resp.status_code != 200: continue
+        for d in dates:
+            # Chiamata API Ottimizzata
+            url = f"https://api.sportmonks.com/v3/football/fixtures/date/{d}"
+            params = {
+                "api_token": TOKEN,
+                "include": "league;participants;odds", 
+            }
             
-            for event in resp.json():
-                try:
-                    if dateutil.parser.parse(event['commence_time']) <= now_utc: continue
-                except: continue
-
-                match_id = event['id']
-                match_name = f"{event['home_team']} vs {event['away_team']}"
+            try:
+                resp = requests.get(url, params=params)
+                if resp.status_code != 200: 
+                    print(f"Err API: {resp.status_code}"); continue
                 
-                pinna_odds, bf_odds = {}, {}
-                for b in event['bookmakers']:
-                    if b['key'] == 'pinnacle':
-                        for o in b['markets'][0]['outcomes']: pinna_odds[o['name']] = o['price']
-                    if 'betfair' in b['title'].lower():
-                        for o in b['markets'][0]['outcomes']: bf_odds[o['name']] = o['price']
-                
-                if not pinna_odds or not bf_odds: continue
-                new_history[match_id] = pinna_odds
-                real_probs = get_fair_odds_pinnacle(pinna_odds)
-                if not real_probs: continue
+                fixtures = resp.json().get('data', [])
+                print(f"📅 {d}: Analisi {len(fixtures)} match...")
 
-                match_candidates = []
+                for fix in fixtures:
+                    # 1. Filtro Lega
+                    league_name = fix.get('league', {}).get('name', 'Unknown')
+                    is_target = False
+                    for l in EURO_LEAGUES:
+                        if l in league_name: is_target = True
+                    if not is_target: continue # Salta leghe minori non coperte bene
 
-                for sel, bf_price in bf_odds.items():
-                    if sel not in real_probs: continue
-                    if not (MIN_ODDS <= bf_price <= MAX_ODDS): continue
+                    name = fix.get('name')
+                    start = fix.get('starting_at', d)
                     
-                    true_p = real_probs[sel]
-                    bf_net = 1 + ((bf_price - 1) * (1 - config.COMMISSIONE_BETFAIR))
-                    ev_perc = round(((true_p * bf_net) - 1) * 100, 2)
-                    q_target = calcola_target_buy(true_p)
+                    # 2. Estrazione Quote
+                    odds = fix.get('odds', [])
+                    pinna = {}
+                    target = {}
 
-                    # LOGICA PAREGGI
-                    is_draw = (sel == 'Draw' or sel == 'X')
-                    soglia_watch = DRAW_EV_WATCH if is_draw else STD_EV_WATCH
-                    soglia_value = DRAW_EV_VALUE if is_draw else STD_EV_VALUE
-
-                    if ev_perc < soglia_watch: continue
-
-                    # TREND
-                    trend_symbol = "➖"
-                    trend_mod = 1.0
-                    if match_id in history and sel in history[match_id]:
-                        pinna_old = history[match_id][sel]
-                        pinna_now = pinna_odds[sel]
-                        diff = pinna_now - pinna_old
-                        if diff < 0: 
-                            trend_symbol = "↘️ DROP"
-                            trend_mod = 1.2
-                        elif diff > 0: 
-                            trend_symbol = "↗️ RISE"
-                            trend_mod = 0.5
-                    
-                    # STAKE
-                    stake_ready = 0
-                    stato = "WATCH"
-                    if ev_perc >= soglia_value:
-                        stake_ready = calcola_kelly_stake(true_p, bf_price, trend_mod)
-                        stato = "READY" if stake_ready > 0 else "WATCH"
-                    
-                    q_calc = max(bf_price, q_target)
-                    stake_limit = calcola_kelly_stake(true_p, q_calc, trend_mod)
-
-                    if stake_limit > 0:
-                        match_candidates.append({
-                            'sel': sel, 'bf': bf_price, 'target': q_target, 'real': round(1/true_p, 2),
-                            'ev': ev_perc, 's_ready': stake_ready, 's_limit': stake_limit, 
-                            'trend': trend_symbol, 'st': stato
-                        })
-
-                if match_candidates:
-                    best = sorted(match_candidates, key=lambda x: x['ev'], reverse=True)[0]
-                    with open(config.FILE_PENDING, 'a', newline='', encoding='utf-8') as f:
-                        csv.writer(f).writerow([
-                            'CALCIO', datetime.now().strftime("%d/%m %H:%M"), converti_orario(event['commence_time']),
-                            league['title'], match_name, best['sel'],
-                            best['bf'], best['target'], best['real'], best['ev'],
-                            best['s_ready'], best['s_limit'], 
-                            best['trend'], best['st'], '', ''
-                        ])
-
-                    if best['st'] == "READY":
-                        msg = f"🔥 SNIPER CALCIO: {best['sel']} - {match_name} (EV: {best['ev']}%)"
-                        send_telegram(msg)
-        
-        save_memory(new_history)
+                    for o in odds:
+                        # Market 1 = 1X2
+                        if o['market_id'] != 1: continue
+                        bid = o['bookmaker_id']
+                        label = o['label'] # 1, X, 2
+                        try: val = float(o['value'])
+                        except: continue
                         
-    except Exception as e: print(f"Err: {e}")
+                        if bid == BK_PINNACLE: pinna[label] = val
+                        if bid == BK_BET365: target[label] = val # Bet365 molto solido come riferimento
+                    
+                    if len(pinna) < 3 or len(target) < 3: continue
+
+                    # 3. Calcoli
+                    margin = (1/pinna['1']) + (1/pinna['X']) + (1/pinna['2'])
+                    real_probs = {k: (1/v)/margin for k,v in pinna.items()}
+
+                    for sel in ['1', 'X', '2']:
+                        q_targ = target[sel]
+                        true_p = real_probs[sel]
+                        
+                        if not (MIN_ODDS <= q_targ <= MAX_ODDS): continue
+                        
+                        # EV
+                        net = 1 + ((q_targ - 1) * 0.95)
+                        ev = round(((true_p * net) - 1) * 100, 2)
+                        
+                        # Pareggi solo se altissimo valore
+                        if sel == 'X' and ev < 3.0: continue
+                        if ev < -1.0: continue
+
+                        stake = 0
+                        status = "WATCH"
+                        if ev >= EV_MIN:
+                            stake = kelly_crit(true_p, q_targ)
+                            status = "READY" if stake > 0 else "WATCH"
+                        
+                        # Calcolo Target Price per Limit Order
+                        limit_p = round((( (1.025)/true_p - 1)/0.95) + 1, 2)
+                        stake_limit = kelly_crit(true_p, max(q_targ, limit_p))
+
+                        if stake_limit > 0:
+                            writer.writerow([
+                                'CALCIO', datetime.now().strftime("%d/%m %H:%M"), start,
+                                league_name, name, sel,
+                                q_targ, limit_p, round(1/true_p, 2), ev,
+                                stake, stake_limit, "➖", status, '', ''
+                            ])
+                            
+                            if status == "READY":
+                                send_telegram(f"⚽ SM-V60: {name} ({sel}) EV:{ev}% Stake:{stake}€")
+
+            except Exception as e: print(f"Err {d}: {e}")
 
 if __name__ == "__main__":
     scan_calcio()
