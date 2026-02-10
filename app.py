@@ -10,13 +10,13 @@ from io import StringIO
 
 # --- CONFIGURAZIONE PAGINA ---
 st.set_page_config(
-    page_title="Sniper V53 Diagnostic", 
+    page_title="Sniper V60 Hybrid", 
     page_icon="🦅", 
     layout="wide", 
     initial_sidebar_state="expanded"
 )
 
-# --- CSS ---
+# --- CSS (Mantenuto Identico) ---
 st.markdown("""
     <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
     <style>
@@ -41,7 +41,8 @@ def clean_num(x):
 def enforce_schema(df):
     if df.empty: return df
     try:
-        # Rinomina colonne vecchie se presenti
+        # Mappatura colonne per sicurezza (V60 Output -> Display)
+        # Il V60 scrive già header corretti, ma per sicurezza:
         rename_map = {
             "Quota_Betfair": "Q_Betfair", 
             "Quota_Target": "Q_Target", 
@@ -51,27 +52,34 @@ def enforce_schema(df):
         }
         df = df.rename(columns=rename_map)
         
-        # Conversione FLOAT sicura
+        # Conversione FLOAT (Escludiamo Trend che è stringa)
         cols_float = ["Q_Betfair", "Q_Target", "Q_Reale", "EV_%", "Profitto"]
         for c in cols_float: 
             if c in df.columns: 
                 df[c] = df[c].astype(str).apply(clean_num)
                 df[c] = pd.to_numeric(df[c], errors='coerce').fillna(0.0)
         
-        # Conversione INT sicura
+        # Conversione INT
         cols_int = ["Stake_Ready", "Stake_Limit"]
         for c in cols_int:
             if c in df.columns: 
                 df[c] = df[c].astype(str).apply(clean_num)
                 df[c] = pd.to_numeric(df[c], errors='coerce').fillna(0).astype(int)
         
-        # Colonne mancanti
+        # Defaults
         if "Trend" not in df.columns: df["Trend"] = "➖"
         if "Abbinata" not in df.columns: df["Abbinata"] = False
+        if "Stato" not in df.columns: df["Stato"] = "WATCH"
         
-        # Rating Visivo
-        if "Rating" not in df.columns and "EV_%" in df.columns:
-            df["Rating"] = df["EV_%"].apply(lambda x: "🟢 SUPER" if x > 2.5 else ("🟡 GOOD" if x > 1.0 else "⚪ WATCH"))
+        # LOGICA V60 PER IL RATING VISIVO
+        def get_rating(row):
+            s = row.get("Stato", "")
+            if s == "READY": return "🟢 EXECUTE" # Value Bet piena
+            if s == "QUASI": return "🟡 LIMIT"   # Quasi Value Bet
+            if row.get("EV_%", 0) > 1.0: return "🟡 GOOD"
+            return "⚪ WATCH"
+
+        df["Rating"] = df.apply(get_rating, axis=1)
 
         return df
     except: return df
@@ -84,11 +92,11 @@ def load_data(f):
 def save_data(df, f): df.to_csv(f, index=False)
 
 def run_scanner():
-    for s in ["scanner_calcio.py", "scanner_tennis.py"]:
+    # --- UPDATE V60: Nomi file aggiornati ---
+    for s in ["scan_calcio.py", "scan_tennis.py"]:
         if os.path.exists(s): subprocess.run([sys.executable, s], check=False)
 
 # --- CONFIGURAZIONE FILE ---
-# Usa getattr per evitare crash se config non ha le variabili
 FILE_STORICO = getattr(config, 'FILE_STORICO', 'registro_operazioni.csv')
 FILE_PENDING = getattr(config, 'FILE_PENDING', 'radar_pending.csv')
 
@@ -96,13 +104,13 @@ FILE_PENDING = getattr(config, 'FILE_PENDING', 'radar_pending.csv')
 df_hist = load_data(FILE_STORICO)
 df_pend = load_data(FILE_PENDING)
 
-bankroll_start = 5000.0
+bankroll_start = getattr(config, 'BANKROLL_TOTALE', 5000.0)
 profit = df_hist['Profitto'].sum() if not df_hist.empty else 0.0
 curr_bank = bankroll_start + profit
 
 # --- SIDEBAR ---
 with st.sidebar:
-    st.markdown('<div class="header-logo">🦅 SNIPER<span class="highlight">V53</span></div>', unsafe_allow_html=True)
+    st.markdown('<div class="header-logo">🦅 SNIPER<span class="highlight">V60</span></div>', unsafe_allow_html=True)
     if "nav" not in st.session_state: st.session_state.nav = "DASHBOARD"
     menu = st.radio("NAVIGAZIONE", ["DASHBOARD", "RADAR ZONE", "REGISTRO"], label_visibility="collapsed")
     st.markdown("---")
@@ -156,18 +164,18 @@ if menu == "DASHBOARD":
 # --- PAGINA 2: RADAR ---
 elif menu == "RADAR ZONE":
     c1, c2 = st.columns([4, 1])
-    c1.markdown("### 📡 ACTIVE TARGETS")
+    c1.markdown("### 📡 ACTIVE TARGETS (V60 RULES)")
     if c2.button("SCAN NOW", type="primary"):
-        with st.spinner("Acquiring Targets..."):
+        with st.spinner("Scanning Markets..."):
             run_scanner()
             time.sleep(0.5)
             st.rerun()
 
     if not df_pend.empty and len(df_pend) > 0:
-        if "Rating" not in df_pend.columns and "EV_%" in df_pend.columns:
-            df_pend["Rating"] = df_pend["EV_%"].apply(lambda x: "🟢 SUPER" if x > 2.5 else ("🟡 GOOD" if x > 1.0 else "⚪ WATCH"))
-
+        # Colonne richieste
         req_cols = ["Abbinata", "Match", "Selezione", "Q_Betfair", "Rating", "Q_Target", "Trend", "EV_%", "Stake_Ready", "Stake_Limit"]
+        
+        # Assicuriamoci che esistano tutte
         for c in req_cols:
             if c not in df_pend.columns:
                 if c == "Abbinata": df_pend[c] = False
@@ -181,13 +189,13 @@ elif menu == "RADAR ZONE":
                 "Abbinata": st.column_config.CheckboxColumn("✅", width="small"),
                 "Match": st.column_config.TextColumn("EVENTO", width="medium"),
                 "Selezione": st.column_config.TextColumn("BET", width="small"),
-                "Q_Betfair": st.column_config.NumberColumn("Q.BF", format="%.2f"),
-                "Rating": st.column_config.TextColumn("RATING", width="small"),
-                "Q_Target": st.column_config.NumberColumn("🎯 TARGET", format="%.2f"),
+                "Q_Betfair": st.column_config.NumberColumn("Q.ATTUALE", format="%.2f", help="Quota disponibile ora"),
+                "Rating": st.column_config.TextColumn("ACTION", width="small"),
+                "Q_Target": st.column_config.NumberColumn("🎯 LIMIT", format="%.2f", help="Prezzo Target per Limit Order"),
                 "Trend": st.column_config.TextColumn("TREND", width="small"),
                 "EV_%": st.column_config.ProgressColumn("VALUE", min_value=-5, max_value=15, format="%.2f%%"),
-                "Stake_Ready": st.column_config.NumberColumn("💶 STAKE (ORA)", format="%d€"),
-                "Stake_Limit": st.column_config.NumberColumn("🎯 STAKE (TARGET)", format="%d€"),
+                "Stake_Ready": st.column_config.NumberColumn("💶 STAKE", format="%d€"),
+                "Stake_Limit": st.column_config.NumberColumn("✋ LIMIT STAKE", format="%d€"),
             },
             column_order=req_cols,
             hide_index=True,
@@ -208,39 +216,14 @@ elif menu == "RADAR ZONE":
             save_data(pd.DataFrame(), FILE_PENDING)
             st.rerun()
     else:
-        st.info("Nessun target nel raggio d'azione. Riprova più tardi.")
+        st.info("Nessun target trovato. Controlla che 'scan_calcio.py' e 'scan_tennis.py' siano nella cartella.")
         if st.button("FORCE RESET"):
             save_data(pd.DataFrame(), FILE_PENDING)
             st.rerun()
 
-# --- PAGINA 3: REGISTRO (CON DIAGNOSTICA) ---
+# --- PAGINA 3: REGISTRO ---
 elif menu == "REGISTRO":
-    st.markdown("### 🛠️ DIAGNOSTICA DI SISTEMA")
-    
-    col_d1, col_d2 = st.columns([1, 3])
-    
-    if col_d1.button("LANCIA TEST TENNIS"):
-        try:
-            import test_tennis # Importa lo script locale
-            
-            old_stdout = sys.stdout
-            sys.stdout = mystdout = StringIO()
-            
-            test_tennis.test_connection()
-            
-            sys.stdout = old_stdout
-            output = mystdout.getvalue()
-            
-            st.success("Test completato!")
-            st.code(output, language="text")
-            
-        except ImportError:
-            st.error("ERRORE: File 'test_tennis.py' non trovato! Crealo nella cartella principale.")
-        except Exception as e:
-            st.error(f"Errore durante il test: {e}")
-
-    st.markdown("---")
     st.markdown("### 📝 LOG OPERATIVO")
     if not df_hist.empty:
         st.dataframe(df_hist, use_container_width=True, hide_index=True)
-        st.download_button("SCARICA CSV", df_hist.to_csv(index=False), "sniper_log.csv")
+        st.download_button("SCARICA CSV", df_hist.to_csv(index=False), "sniper_log.csv"
