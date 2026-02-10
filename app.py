@@ -41,7 +41,7 @@ def clean_num(x):
 def enforce_schema(df):
     if df.empty: return df
     try:
-        # Mappatura colonne per sicurezza (V60 Output -> Display)
+        # Mappatura colonne per sicurezza
         rename_map = {
             "Quota_Betfair": "Q_Betfair", 
             "Quota_Target": "Q_Target", 
@@ -51,7 +51,7 @@ def enforce_schema(df):
         }
         df = df.rename(columns=rename_map)
         
-        # Conversione FLOAT (Escludiamo Trend che è stringa)
+        # Conversione FLOAT
         cols_float = ["Q_Betfair", "Q_Target", "Q_Reale", "EV_%", "Profitto"]
         for c in cols_float: 
             if c in df.columns: 
@@ -70,16 +70,15 @@ def enforce_schema(df):
         if "Abbinata" not in df.columns: df["Abbinata"] = False
         if "Stato" not in df.columns: df["Stato"] = "WATCH"
         
-        # LOGICA V60 PER IL RATING VISIVO
+        # LOGICA V60 RATING VISIVO
         def get_rating(row):
             s = row.get("Stato", "")
-            if s == "READY": return "🟢 EXECUTE" # Value Bet piena
-            if s == "QUASI": return "🟡 LIMIT"   # Quasi Value Bet
+            if s == "READY": return "🟢 EXECUTE" 
+            if s == "QUASI": return "🟡 LIMIT"   
             if row.get("EV_%", 0) > 1.0: return "🟡 GOOD"
             return "⚪ WATCH"
 
         df["Rating"] = df.apply(get_rating, axis=1)
-
         return df
     except: return df
 
@@ -91,9 +90,18 @@ def load_data(f):
 def save_data(df, f): df.to_csv(f, index=False)
 
 def run_scanner():
-    # --- UPDATE V60: Nomi file aggiornati ---
-    for s in ["scan_calcio.py", "scan_tennis.py"]:
-        if os.path.exists(s): subprocess.run([sys.executable, s], check=False)
+    # --- MODIFICA FONDAMENTALE: ORA CERCA I TUOI NOMI CORRETTI ---
+    # Cerca "scanner_calcio.py" e "scanner_tennis.py" invece di "scan_"
+    files_to_run = ["scanner_calcio.py", "scanner_tennis.py"]
+    
+    found_any = False
+    for s in files_to_run:
+        if os.path.exists(s): 
+            subprocess.run([sys.executable, s], check=False)
+            found_any = True
+            
+    if not found_any:
+        st.error(f"⚠️ ERRORE: Non trovo i file! Controlla di avere {files_to_run} nella cartella.")
 
 # --- CONFIGURAZIONE FILE ---
 FILE_STORICO = getattr(config, 'FILE_STORICO', 'registro_operazioni.csv')
@@ -171,10 +179,7 @@ elif menu == "RADAR ZONE":
             st.rerun()
 
     if not df_pend.empty and len(df_pend) > 0:
-        # Colonne richieste
         req_cols = ["Abbinata", "Match", "Selezione", "Q_Betfair", "Rating", "Q_Target", "Trend", "EV_%", "Stake_Ready", "Stake_Limit"]
-        
-        # Assicuriamoci che esistano tutte
         for c in req_cols:
             if c not in df_pend.columns:
                 if c == "Abbinata": df_pend[c] = False
@@ -188,13 +193,13 @@ elif menu == "RADAR ZONE":
                 "Abbinata": st.column_config.CheckboxColumn("✅", width="small"),
                 "Match": st.column_config.TextColumn("EVENTO", width="medium"),
                 "Selezione": st.column_config.TextColumn("BET", width="small"),
-                "Q_Betfair": st.column_config.NumberColumn("Q.ATTUALE", format="%.2f", help="Quota disponibile ora"),
+                "Q_Betfair": st.column_config.NumberColumn("Q.BF", format="%.2f"),
                 "Rating": st.column_config.TextColumn("ACTION", width="small"),
-                "Q_Target": st.column_config.NumberColumn("🎯 LIMIT", format="%.2f", help="Prezzo Target per Limit Order"),
+                "Q_Target": st.column_config.NumberColumn("🎯 LIMIT", format="%.2f"),
                 "Trend": st.column_config.TextColumn("TREND", width="small"),
                 "EV_%": st.column_config.ProgressColumn("VALUE", min_value=-5, max_value=15, format="%.2f%%"),
                 "Stake_Ready": st.column_config.NumberColumn("💶 STAKE", format="%d€"),
-                "Stake_Limit": st.column_config.NumberColumn("✋ LIMIT STAKE", format="%d€"),
+                "Stake_Limit": st.column_config.NumberColumn("✋ LIMIT", format="%d€"),
             },
             column_order=req_cols,
             hide_index=True,
@@ -215,7 +220,7 @@ elif menu == "RADAR ZONE":
             save_data(pd.DataFrame(), FILE_PENDING)
             st.rerun()
     else:
-        st.info("Nessun target trovato. Controlla che 'scan_calcio.py' e 'scan_tennis.py' siano nella cartella.")
+        st.info("Nessun target trovato. Assicurati che gli scanner abbiano trovato match validi.")
         if st.button("FORCE RESET"):
             save_data(pd.DataFrame(), FILE_PENDING)
             st.rerun()
