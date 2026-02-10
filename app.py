@@ -1,10 +1,3 @@
-Hai ragione, scusami. È un errore di sintassi banalissimo: manca una parentesi chiusa ) proprio nell'ultima riga del codice.
-
-Per evitare qualsiasi confusione e rispettare la tua richiesta di avere il codice completo e pronto all'uso, ecco il file app.py intero e corretto.
-
-Copia tutto questo blocco e sovrascrivi interamente il tuo file app.py.
-
-Python
 import streamlit as st
 import pandas as pd
 import plotly.express as px
